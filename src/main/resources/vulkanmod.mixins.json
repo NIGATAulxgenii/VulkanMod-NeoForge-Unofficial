@@ -32,8 +32,6 @@
     "debug.GlDebugInfoM",
     "debug.KeyboardHandlerM",
 
-    "matrix.Matrix4fM",
-
     "profiling.GuiMixin",
     "profiling.KeyboardHandlerM",
     "profiling.LevelRendererMixin",

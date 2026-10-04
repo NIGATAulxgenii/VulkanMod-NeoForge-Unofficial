@@ -43,6 +43,9 @@ neoForge {
             loadedMods = [mods.vulkansmoke]
             gameDirectory = project.file('run-packaged-smoke')
             jvmArgument '-Xmx3G'
+            if (providers.gradleProperty('smokeWorld').isPresent()) {
+                jvmArgument "-Dvulkanmod.smokeWorld=${providers.gradleProperty('smokeWorld').get()}"
+            }
         }
     }
 }
@@ -73,11 +76,18 @@ dependencies {
         developmentRuntime("org.lwjgl:lwjgl-vulkan:${lwjglVersion}:${platform}")
     }
 }
-def stagePackagedSmoke = tasks.register('stagePackagedSmoke', Copy) {
+def stagePackagedSmoke = tasks.register('stagePackagedSmoke', Sync) {
     from(tasks.named('jar'))
     into('run-packaged-smoke/mods')
 }
 neoForge.runs.clientPackagedSmoke.taskBefore(stagePackagedSmoke)
+tasks.named('runClientPackagedSmoke') {
+    def marker = file('run-packaged-smoke/verification/PASS.txt')
+    doFirst { marker.delete() }
+    doLast {
+        if (!marker.isFile()) throw new GradleException('Minecraft smoke test did not reach PASS; inspect the client log.')
+    }
+}
 tasks.withType(JavaCompile).configureEach {
     options.release = 21
     options.encoding = 'UTF-8'

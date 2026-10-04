@@ -51,6 +51,12 @@ Target: Minecraft 1.21.1, Java 21, NeoForge 21.1.252. No Connector or Fabric run
   cannot resolve Vulkan Java classes loaded in the child game module layer.
 * Keep native classifier configurations non-transitive: embedding LWJGL core
   again introduces conflicting Java module packages in the release JAR.
+* Convert OpenGL projection depth to Vulkan's [0, w] range at the renderer
+  boundary, including legacy shader and post-processing uniforms. JOML is a
+  bootstrap library on NeoForge; its old projection mixin did not execute.
+  With NeoForge's GUI projection, the white foreground of shadowed text was
+  clipped while the dark shadow survived. Preserve Minecraft's matrices and
+  projection/restore vertex-sorting state; remove the ineffective JOML mixin.
 
 ## Verification
 
@@ -59,12 +65,19 @@ Target: Minecraft 1.21.1, Java 21, NeoForge 21.1.252. No Connector or Fabric run
 config persistence, shader include success/failure, NO_API window, Vulkan device,
 world section compilation, screenshot pixels, native additional geometry
 including an empty section, a namespaced shader through `RegisterShadersEvent`,
-resource reload, and the Minecraft video-settings button. The test creates
+resource reload, white text both with and without shadows, repeated UI sounds,
+and the Minecraft video-settings button. The test creates
 worlds only in its separate test directory and stops its client when finished.
 
 `gradlew.bat runClientPackagedSmoke` stages the release JAR under
 `run-packaged-smoke/mods`, loads only the smoke mod from development source sets,
 and obtains Vulkan/VMA/shaderc and their native resources from the release JAR.
+The Gradle task requires a fresh `verification/PASS.txt` marker after the client
+exits; a clean Java exit alone cannot hide a failed visual assertion. Staging
+syncs the test mods directory so older versions do not remain alongside the JAR.
+For a world already copied into the test saves directory, use
+`gradlew.bat runClientPackagedSmoke -PsmokeWorld=CopiedWorldName`. This mode opens
+that copy without constructing the synthetic test scene.
 
 Runtime validation: Windows 10, Java 21.0.9, NVIDIA RTX 5070. Build, packaged
 client startup, world rendering, transparency/fluids, a chest, native additional
@@ -76,6 +89,20 @@ Evidence is stored under `run-packaged-smoke/verification` and in
 Linux/macOS, multiplayer, arbitrary resource packs and other mods
 replacing the renderer have not been runtime-tested. No FPS improvement claim
 is made without a controlled comparison.
+
+Update `0.4.8-neoforge.2`: `build runClientPackagedSmoke` passed on Temurin
+21.0.9+10, the same JVM as the reported Prism instance. The shadowed-text probe
+changed from zero white pixels (maximum brightness 63) to 904 white pixels
+(maximum 255); unshadowed text remained white. The copied Prism world also
+opened, rendered, reloaded resources and exited normally with the instance's
+settings and its fifine SC1 output device. Logs: `verification-neoforge2.log`,
+`prism-world-copy.log`, `openal-world-copy.log` (local, ignored by Git).
+
+The separately reported native exit was recorded by Windows in OpenAL.dll
+1.23.1 with exception 0xc0000409. Minecraft's debug log had no Java exception,
+and no retained native dump was available. Sound playback and world entry did
+not reproduce that failure in the tests; this update does not claim to fix it
+or replace the audio library without evidence.
 
 ## Sources used
 

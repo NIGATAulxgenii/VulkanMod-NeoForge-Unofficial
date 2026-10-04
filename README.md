@@ -30,7 +30,7 @@ See [PORTING.md](PORTING.md) for the migration, reliability fixes and runtime ve
 
 ### Install guide:
 1. Install Minecraft **1.21.1** with **NeoForge 21.1.252** and Java **21**.
-2. Build with `gradlew.bat build`, or use the supplied `VulkanMod-1.21.1-NeoForge-0.4.8-neoforge.1.jar`.
+2. Build with `gradlew.bat build`, or use the supplied `VulkanMod-1.21.1-NeoForge-0.4.8-neoforge.2.jar`.
 3. Put that JAR from `build/libs` into the client's `mods` folder. Do not install the `-sources.jar`.
 4. Use a Vulkan 1.2 capable GPU and driver. This is a client renderer; other mods replacing the renderer require separate compatibility checks.
 

@@ -99,7 +99,16 @@ public abstract class VRenderSystem {
     }
 
     public static void applyProjectionMatrix(Matrix4f mat) {
-        mat.get(projectionMatrix.buffer.asFloatBuffer());
+        toVulkanProjection(mat).get(projectionMatrix.buffer.asFloatBuffer());
+    }
+
+    /** Keep Minecraft's matrices in OpenGL space; Vulkan clips depth to [0, w]. */
+    public static Matrix4f toVulkanProjection(Matrix4f mat) {
+        return new Matrix4f(mat)
+                .m02(0.5f * (mat.m02() + mat.m03()))
+                .m12(0.5f * (mat.m12() + mat.m13()))
+                .m22(0.5f * (mat.m22() + mat.m23()))
+                .m32(0.5f * (mat.m32() + mat.m33()));
     }
 
     public static void calculateMVP() {

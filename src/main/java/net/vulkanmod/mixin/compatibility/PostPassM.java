@@ -62,7 +62,7 @@ public class PostPassM {
             this.effect.safeGetUniform("AuxSize" + i).set((float) this.auxWidths.get(i), (float) this.auxHeights.get(i));
         }
 
-        this.effect.safeGetUniform("ProjMat").set(this.shaderOrthoMatrix);
+        this.effect.safeGetUniform("ProjMat").set(VRenderSystem.toVulkanProjection(this.shaderOrthoMatrix));
         this.effect.safeGetUniform("InSize").set((float)this.inTarget.width, (float)this.inTarget.height);
         this.effect.safeGetUniform("OutSize").set(g, h);
         this.effect.safeGetUniform("Time").set(f);

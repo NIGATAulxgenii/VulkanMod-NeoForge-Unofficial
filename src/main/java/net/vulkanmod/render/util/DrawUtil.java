@@ -51,7 +51,7 @@ public class DrawUtil {
 
         VTextureSelector.bindTexture(attachment);
 
-        Matrix4f matrix4f = new Matrix4f().setOrtho(0.0F, 1.0F, 0.0F, 1.0F, 0.0F, 1.0F, true);
+        Matrix4f matrix4f = new Matrix4f().setOrtho(0.0F, 1.0F, 0.0F, 1.0F, 0.0F, 1.0F);
         RenderSystem.setProjectionMatrix(matrix4f, VertexSorting.DISTANCE_TO_ORIGIN);
         Matrix4fStack posestack = RenderSystem.getModelViewStack();
         posestack.pushMatrix();

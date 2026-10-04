@@ -3,6 +3,9 @@ package net.vulkanmod.smoke;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Screenshot;
 import net.minecraft.client.gui.screens.TitleScreen;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.network.chat.Component;
 import net.minecraft.client.gui.screens.AccessibilityOnboardingScreen;
 import net.minecraft.client.gui.screens.options.OptionsScreen;
 import net.minecraft.client.gui.components.Button;
@@ -36,6 +39,9 @@ import net.neoforged.bus.api.IEventBus;
 import net.neoforged.neoforge.client.event.RegisterShadersEvent;
 import java.util.concurrent.atomic.AtomicInteger;
 import net.vulkanmod.vulkan.Vulkan;
+import com.mojang.blaze3d.systems.RenderSystem;
+import net.minecraft.client.resources.sounds.SimpleSoundInstance;
+import net.minecraft.sounds.SoundEvents;
 import org.lwjgl.glfw.GLFW;
 
 import java.nio.file.Files;
@@ -48,6 +54,50 @@ public final class VulkanSmoke {
     private String world;
     private final AtomicInteger additionalGeometryCalls = new AtomicInteger();
     private int shaderRegistrations;
+    private boolean whiteTextPassed;
+    private final String existingWorld = System.getProperty("vulkanmod.smokeWorld");
+
+    private void beginWorld(Minecraft mc) {
+        phase = 1;
+        ticks = 0;
+        if (existingWorld != null) {
+            world = existingWorld;
+            mc.options.pauseOnLostFocus = false;
+            mc.createWorldOpenFlows().openWorld(world, () -> mc.setScreen(new TitleScreen()));
+            return;
+        }
+        mc.options.renderDistance().set(6);
+        mc.options.simulationDistance().set(5);
+        mc.options.pauseOnLostFocus = false;
+        world = "VulkanSmoke-" + System.currentTimeMillis();
+        mc.createWorldOpenFlows().createFreshLevel(world,
+                new LevelSettings(world, GameType.CREATIVE, false, Difficulty.PEACEFUL, true, new GameRules(), WorldDataConfiguration.DEFAULT),
+                new WorldOptions(12345L, false, false), WorldPresets::createNormalWorldDimensions, mc.screen);
+    }
+
+    private void checkWhiteText(Minecraft mc) throws Exception {
+        try (var frame = Screenshot.takeScreenshot(mc.getMainRenderTarget())) {
+            var directory = mc.gameDirectory.toPath().resolve("verification");
+            Files.createDirectories(directory);
+            frame.writeToFile(directory.resolve("white-text.png"));
+            double scale = mc.getWindow().getGuiScale();
+            int[] bright = new int[2];
+            int[] max = new int[2];
+            for (int row = 0; row < 2; row++) {
+                int top = row == 0 ? 16 : 40;
+                for (int y = (int)(top * scale); y < (top + 12) * scale; y++)
+                    for (int x = (int)(16 * scale); x < 170 * scale; x++) {
+                        int pixel = frame.getPixelRGBA(x, y);
+                        int brightness = Math.min(pixel & 255, Math.min((pixel >>> 8) & 255, (pixel >>> 16) & 255));
+                        max[row] = Math.max(max[row], brightness);
+                        if (brightness >= 220) bright[row]++;
+                    }
+            }
+            whiteTextPassed = bright[0] >= 20 && bright[1] >= 20;
+            Initializer.LOGGER.info("FONT PROBE: plain={}/{} shadow={}/{} whitePassed={} shaderColor={} fog={}/{}", bright[0], max[0], bright[1], max[1], whiteTextPassed,
+                    java.util.Arrays.toString(RenderSystem.getShaderColor()), RenderSystem.getShaderFogStart(), RenderSystem.getShaderFogEnd());
+        }
+    }
 
     public VulkanSmoke(IEventBus modBus) {
         NeoForge.EVENT_BUS.addListener(this::tick);
@@ -135,18 +185,28 @@ public final class VulkanSmoke {
                 if (Vulkan.getVkDevice() == null) throw new IllegalStateException("Vulkan device missing");
                 regressionChecks(mc);
                 screenshot(mc, "title");
-                phase = 1;
+                phase = 6;
                 ticks = 0;
-                mc.options.renderDistance().set(6);
-                mc.options.simulationDistance().set(5);
-                mc.options.pauseOnLostFocus = false;
-                world = "VulkanSmoke-" + System.currentTimeMillis();
-                mc.createWorldOpenFlows().createFreshLevel(world,
-                        new LevelSettings(world, GameType.CREATIVE, false, Difficulty.PEACEFUL, true, new GameRules(), WorldDataConfiguration.DEFAULT),
-                        new WorldOptions(12345L, false, false), WorldPresets::createNormalWorldDimensions, mc.screen);
+                Files.deleteIfExists(mc.gameDirectory.toPath().resolve("verification/PASS.txt"));
+                mc.setScreen(new Screen(Component.literal("Font probe")) {
+                    @Override
+                    public void render(GuiGraphics graphics, int mouseX, int mouseY, float delta) {
+                        graphics.fill(0, 0, width, height, 0xFF000000);
+                        graphics.drawString(font, "WHITE TEXT", 16, 16, 0xFFFFFFFF, false);
+                        graphics.drawString(font, "WHITE SHADOW TEXT", 16, 40, 0xFFFFFFFF, true);
+                        graphics.flush();
+                    }
+                });
+            } else if (phase == 6) {
+                if (++ticks < 40) return;
+                checkWhiteText(mc);
+                mc.getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK, 1.0F));
+                beginWorld(mc);
             } else if (phase == 1 && mc.level != null && mc.player != null && mc.getOverlay() == null) {
                 mc.setScreen(null);
                 phase = 2;
+                ticks = 0;
+                if (existingWorld != null) return;
                 var uuid = mc.player.getUUID();
                 mc.getSingleplayerServer().execute(() -> {
                     var server = mc.getSingleplayerServer();
@@ -167,20 +227,25 @@ public final class VulkanSmoke {
                 mc.player.setXRot(15);
                 ticks = 0;
             } else if (phase == 2 && mc.level != null) {
-                mc.player.setYRot(180);
-                mc.player.setXRot(15);
+                if (ticks % 20 == 0) mc.getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK, 1.0F));
+                if (existingWorld == null) {
+                    mc.player.setYRot(180);
+                    mc.player.setXRot(15);
+                }
                 if (++ticks < 240) return;
                 if (mc.screen != null) throw new IllegalStateException("World view obscured by " + mc.screen);
-                if (!mc.level.getBlockState(new BlockPos(-1, 101, 0)).is(Blocks.GLASS)
-                        || !mc.level.getBlockState(new BlockPos(0, 101, 0)).is(Blocks.CHEST))
-                    throw new IllegalStateException("Test scene did not reach the client");
                 if (WorldRenderer.getInstance().getVisibleSectionsCount() == 0) throw new IllegalStateException("No visible Vulkan chunk sections");
-                if (!WorldRenderer.getInstance().isSectionCompiled(new BlockPos(0, 101, 0))) throw new IllegalStateException("Test blocks were not compiled by Vulkan");
-                if (additionalGeometryCalls.get() == 0) throw new IllegalStateException("NeoForge additional geometry callbacks were not executed");
-                var emptyRegion = new RenderRegionBuilder().createRegion(mc.level, 0, 16, 0);
-                if (emptyRegion == null || emptyRegion.additionalRenderers.isEmpty()) throw new IllegalStateException("Geometry in an empty section was discarded");
-                if (emptyRegion.getAuxLightManager(new net.minecraft.world.level.ChunkPos(0, 0)) == null)
-                    throw new IllegalStateException("Region discarded NeoForge's auxiliary light manager");
+                if (existingWorld == null) {
+                    if (!mc.level.getBlockState(new BlockPos(-1, 101, 0)).is(Blocks.GLASS)
+                            || !mc.level.getBlockState(new BlockPos(0, 101, 0)).is(Blocks.CHEST))
+                        throw new IllegalStateException("Test scene did not reach the client");
+                    if (!WorldRenderer.getInstance().isSectionCompiled(new BlockPos(0, 101, 0))) throw new IllegalStateException("Test blocks were not compiled by Vulkan");
+                    if (additionalGeometryCalls.get() == 0) throw new IllegalStateException("NeoForge additional geometry callbacks were not executed");
+                    var emptyRegion = new RenderRegionBuilder().createRegion(mc.level, 0, 16, 0);
+                    if (emptyRegion == null || emptyRegion.additionalRenderers.isEmpty()) throw new IllegalStateException("Geometry in an empty section was discarded");
+                    if (emptyRegion.getAuxLightManager(new net.minecraft.world.level.ChunkPos(0, 0)) == null)
+                        throw new IllegalStateException("Region discarded NeoForge's auxiliary light manager");
+                }
                 screenshot(mc, "world");
                 phase = 3;
                 ticks = 0;
@@ -202,8 +267,14 @@ public final class VulkanSmoke {
                 if (++ticks < 40) return;
                 screenshot(mc, "video-settings");
                 mc.screen.onClose();
-                Initializer.LOGGER.info("SMOKE PASS: native NeoForge, NO_API window, Vulkan device, rendered world, fluids, block entities, additional geometry, resource reload, video settings");
-                Files.writeString(mc.gameDirectory.toPath().resolve("verification/PASS.txt"), "Minecraft 1.21.1 / NeoForge 21.1.252\nWorld=" + world + "\nAdditionalGeometryCalls=" + additionalGeometryCalls.get() + "\nShaderRegistrations=" + shaderRegistrations + "\n");
+                if (!whiteTextPassed) {
+                    Initializer.LOGGER.error("SMOKE FAIL: white text regression (see white-text.png)");
+                    phase = 5;
+                    mc.stop();
+                    return;
+                }
+                Initializer.LOGGER.info("SMOKE PASS: native NeoForge, NO_API window, Vulkan device, rendered {} world, resource reload, video settings, white text, sound playback", existingWorld == null ? "fresh (fluids, block entities, additional geometry)" : "copied");
+                Files.writeString(mc.gameDirectory.toPath().resolve("verification/PASS.txt"), "Minecraft 1.21.1 / NeoForge 21.1.252\nWorld=" + world + "\nWhiteText=true\nAdditionalGeometryCalls=" + additionalGeometryCalls.get() + "\nShaderRegistrations=" + shaderRegistrations + "\n");
                 phase = 5;
                 mc.stop();
             }

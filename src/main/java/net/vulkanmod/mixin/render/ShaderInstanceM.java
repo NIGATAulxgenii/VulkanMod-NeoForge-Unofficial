@@ -11,6 +11,7 @@ import net.minecraft.server.packs.resources.Resource;
 import net.minecraft.server.packs.resources.ResourceProvider;
 import net.vulkanmod.Initializer;
 import net.vulkanmod.interfaces.ShaderMixed;
+import net.vulkanmod.vulkan.VRenderSystem;
 import net.vulkanmod.vulkan.shader.GraphicsPipeline;
 import net.vulkanmod.vulkan.shader.Pipeline;
 import net.vulkanmod.vulkan.shader.descriptor.UBO;
@@ -136,7 +137,7 @@ public class ShaderInstanceM implements ShaderMixed {
         }
 
         if (this.PROJECTION_MATRIX != null) {
-            this.PROJECTION_MATRIX.set(RenderSystem.getProjectionMatrix());
+            this.PROJECTION_MATRIX.set(VRenderSystem.toVulkanProjection(RenderSystem.getProjectionMatrix()));
         }
 
         if (this.COLOR_MODULATOR != null) {
