@@ -3,6 +3,7 @@ package net.vulkanmod.smoke;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Screenshot;
 import net.minecraft.client.gui.screens.TitleScreen;
+import net.minecraft.client.gui.screens.worldselection.SelectWorldScreen;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
@@ -81,10 +82,10 @@ public final class VulkanSmoke {
             Files.createDirectories(directory);
             frame.writeToFile(directory.resolve("white-text.png"));
             double scale = mc.getWindow().getGuiScale();
-            int[] bright = new int[2];
-            int[] max = new int[2];
-            for (int row = 0; row < 2; row++) {
-                int top = row == 0 ? 16 : 40;
+            int[] bright = new int[3];
+            int[] max = new int[3];
+            for (int row = 0; row < 3; row++) {
+                int top = 16 + row * 24;
                 for (int y = (int)(top * scale); y < (top + 12) * scale; y++)
                     for (int x = (int)(16 * scale); x < 170 * scale; x++) {
                         int pixel = frame.getPixelRGBA(x, y);
@@ -93,8 +94,8 @@ public final class VulkanSmoke {
                         if (brightness >= 220) bright[row]++;
                     }
             }
-            whiteTextPassed = bright[0] >= 20 && bright[1] >= 20;
-            Initializer.LOGGER.info("FONT PROBE: plain={}/{} shadow={}/{} whitePassed={} shaderColor={} fog={}/{}", bright[0], max[0], bright[1], max[1], whiteTextPassed,
+            whiteTextPassed = bright[0] >= 20 && bright[1] >= 20 && bright[2] >= 20;
+            Initializer.LOGGER.info("FONT PROBE: plain={}/{} shadow={}/{} unicode={}/{} whitePassed={} shaderColor={} fog={}/{}", bright[0], max[0], bright[1], max[1], bright[2], max[2], whiteTextPassed,
                     java.util.Arrays.toString(RenderSystem.getShaderColor()), RenderSystem.getShaderFogStart(), RenderSystem.getShaderFogEnd());
         }
     }
@@ -145,6 +146,28 @@ public final class VulkanSmoke {
     }
 
     private void regressionChecks(Minecraft mc) throws Exception {
+        // UnihexProvider uses this IntBuffer upload path instead of NativeImage._upload.
+        int glyphTexture = com.mojang.blaze3d.platform.TextureUtil.generateTextureId();
+        com.mojang.blaze3d.platform.TextureUtil.prepareImage(glyphTexture, 2, 2);
+        var glyphPixels = org.lwjgl.system.MemoryUtil.memAllocInt(4);
+        glyphPixels.put(new int[] {0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF}).flip();
+        var glyphRelease = new AtomicInteger();
+        try {
+            Initializer.LOGGER.info("SMOKE: testing native Unihex glyph upload");
+            com.mojang.blaze3d.platform.GlStateManager.upload(0, 0, 0, 2, 2,
+                    com.mojang.blaze3d.platform.NativeImage.Format.RGBA, glyphPixels, pixels -> {
+                        glyphRelease.incrementAndGet();
+                        org.lwjgl.system.MemoryUtil.memFree(pixels);
+                    });
+            if (glyphRelease.get() != 1) throw new IllegalStateException("Glyph upload did not release its pixels once");
+            try (var image = new com.mojang.blaze3d.platform.NativeImage(2, 2, false)) {
+                image.downloadTexture(0, false);
+                for (int y = 0; y < 2; y++) for (int x = 0; x < 2; x++)
+                    if (image.getPixelRGBA(x, y) != 0xFFFFFFFF) throw new IllegalStateException("Unicode glyph pixels were not uploaded");
+            }
+        } finally {
+            com.mojang.blaze3d.platform.GlStateManager._deleteTexture(glyphTexture);
+        }
         var configFile = mc.gameDirectory.toPath().resolve("verification/config-" + System.nanoTime() + "/settings.json");
         try {
             if (Config.load(configFile) != null) throw new IllegalStateException("New config already exists");
@@ -173,6 +196,7 @@ public final class VulkanSmoke {
     private void tick(ClientTickEvent.Post event) {
         Minecraft mc = Minecraft.getInstance();
         try {
+            GLFW.glfwSetWindowTitle(mc.getWindow().getWindow(), "VulkanMod automated test - do not interact");
             if (phase == 0 && mc.screen instanceof AccessibilityOnboardingScreen && mc.getOverlay() == null) {
                 mc.setScreen(new TitleScreen());
             }
@@ -194,13 +218,28 @@ public final class VulkanSmoke {
                         graphics.fill(0, 0, width, height, 0xFF000000);
                         graphics.drawString(font, "WHITE TEXT", 16, 16, 0xFFFFFFFF, false);
                         graphics.drawString(font, "WHITE SHADOW TEXT", 16, 40, 0xFFFFFFFF, true);
+                        graphics.drawString(font, "Русский Ёё Її ∀ 中文", 16, 64, 0xFFFFFFFF, true);
                         graphics.flush();
                     }
                 });
             } else if (phase == 6) {
                 if (++ticks < 40) return;
                 checkWhiteText(mc);
-                mc.getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK, 1.0F));
+                var title = new TitleScreen();
+                mc.setScreen(title);
+                var singleplayer = title.children().stream().filter(child -> child instanceof Button button
+                        && button.getMessage().getContents() instanceof TranslatableContents translation
+                        && translation.getKey().equals("menu.singleplayer")).findFirst().orElseThrow();
+                Initializer.LOGGER.info("SMOKE: pressing the Singleplayer title button");
+                ((Button) singleplayer).playDownSound(mc.getSoundManager());
+                ((Button) singleplayer).onPress();
+                phase = 7;
+                ticks = 0;
+            } else if (phase == 7) {
+                if (!(mc.screen instanceof SelectWorldScreen)) throw new IllegalStateException("Singleplayer did not open the world list");
+                if (++ticks < 100) return;
+                screenshot(mc, "singleplayer-list");
+                Initializer.LOGGER.info("SMOKE: world list rendered before opening a world");
                 beginWorld(mc);
             } else if (phase == 1 && mc.level != null && mc.player != null && mc.getOverlay() == null) {
                 mc.setScreen(null);

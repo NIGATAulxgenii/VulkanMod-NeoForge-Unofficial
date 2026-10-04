@@ -13,12 +13,23 @@ import org.lwjgl.opengl.GL20;
 import org.lwjgl.system.MemoryUtil;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Overwrite;
+import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Redirect;
 
 import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
 
 @Mixin(GlStateManager.class)
 public class GlStateManagerM {
+
+    // UnihexProvider uploads through this helper, bypassing NativeImage._upload.
+    // LWJGL's bootstrap GL11 cannot be transformed by our GL compatibility mixins.
+    @Redirect(method = "_upload", at = @At(value = "INVOKE",
+            target = "Lorg/lwjgl/opengl/GL11;glTexSubImage2D(IIIIIIIILjava/nio/IntBuffer;)V"), remap = false)
+    private static void uploadGlyphToVulkan(int target, int level, int x, int y, int width, int height,
+                                          int format, int type, IntBuffer pixels) {
+        GlTexture.texSubImage2D(target, level, x, y, width, height, format, type, MemoryUtil.memByteBuffer(pixels));
+    }
 
     /**
      * @author NeoForge port

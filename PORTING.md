@@ -57,6 +57,11 @@ Target: Minecraft 1.21.1, Java 21, NeoForge 21.1.252. No Connector or Fabric run
   With NeoForge's GUI projection, the white foreground of shadowed text was
   clipped while the dark shadow survived. Preserve Minecraft's matrices and
   projection/restore vertex-sorting state; remove the ineffective JOML mixin.
+* Route `GlStateManager._upload`'s IntBuffer texture upload through Vulkan.
+  Unihex glyphs use this helper rather than `NativeImage._upload`; leaving its
+  direct bootstrap GL11 call in place aborts the JVM because no OpenGL context
+  is current. Keep vanilla's render-thread dispatch and finally-based pixel
+  release, and copy the pixels into Vulkan staging before that release.
 
 ## Verification
 
@@ -65,8 +70,10 @@ Target: Minecraft 1.21.1, Java 21, NeoForge 21.1.252. No Connector or Fabric run
 config persistence, shader include success/failure, NO_API window, Vulkan device,
 world section compilation, screenshot pixels, native additional geometry
 including an empty section, a namespaced shader through `RegisterShadersEvent`,
-resource reload, white text both with and without shadows, repeated UI sounds,
-and the Minecraft video-settings button. The test creates
+resource reload, white text both with and without shadows, Cyrillic/Unicode
+text, native Unihex glyph upload/readback and exactly-once pixel release,
+the actual Singleplayer button/world list, repeated UI sounds, and the
+Minecraft video-settings button. The test creates
 worlds only in its separate test directory and stops its client when finished.
 
 `gradlew.bat runClientPackagedSmoke` stages the release JAR under
@@ -98,11 +105,16 @@ opened, rendered, reloaded resources and exited normally with the instance's
 settings and its fifine SC1 output device. Logs: `verification-neoforge2.log`,
 `prism-world-copy.log`, `openal-world-copy.log` (local, ignored by Git).
 
-The separately reported native exit was recorded by Windows in OpenAL.dll
-1.23.1 with exception 0xc0000409. Minecraft's debug log had no Java exception,
-and no retained native dump was available. Sound playback and world entry did
-not reproduce that failure in the tests; this update does not claim to fix it
-or replace the audio library without evidence.
+Update `0.4.8-neoforge.3`: the native Unihex upload test reproduced the JVM
+abort before the fix (`unicode-red.log`: "No context is current", stack through
+`GL11.glTexSubImage2D` and `GlStateManager._upload`). Windows attributed the
+fatal process exit to OpenAL.dll with 0xc0000409; the native upload call path,
+rather than that module name alone, identified the cause. No audio dependency
+replacement was needed. The fixed JAR passed the pixel readback/release test,
+mixed Cyrillic/Unicode rendering, the Russian Singleplayer list and the copied
+world (`unicode-fixed-ru.log`). English menu/new-world verification is recorded
+in `unicode-fixed-en.log`. Both runs use Temurin 21.0.9+10. The Unicode text
+probe observed 721 white pixels with maximum brightness 255.
 
 ## Sources used
 
