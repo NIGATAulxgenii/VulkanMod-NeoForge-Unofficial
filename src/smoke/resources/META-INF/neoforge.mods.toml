@@ -1,0 +1,7 @@
+modLoader="javafml"
+loaderVersion="[4,)"
+license="LGPL-3.0-only"
+[[mods]]
+modId="vulkansmoke"
+version="1"
+displayName="VulkanMod development smoke test"

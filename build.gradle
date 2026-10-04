@@ -1,0 +1,96 @@
+plugins {
+    id 'java-library'
+    id 'maven-publish'
+    id 'net.neoforged.moddev' version '2.0.115'
+}
+version = project.mod_version
+group = project.maven_group
+base { archivesName = project.archives_base_name }
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(21)
+    withSourcesJar()
+}
+sourceSets {
+    smoke {
+        compileClasspath += sourceSets.main.output
+        compileClasspath += sourceSets.main.compileClasspath
+    }
+}
+neoForge {
+    version = project.neo_version
+    addModdingDependenciesTo sourceSets.smoke
+    mods {
+        vulkanmod { sourceSet sourceSets.main }
+        vulkansmoke { sourceSet sourceSets.smoke }
+    }
+    runs {
+        client {
+            client()
+            loadedMods = [mods.vulkanmod]
+            gameDirectory = project.file('run')
+            jvmArgument '-Xmx3G'
+        }
+        clientSmoke {
+            client()
+            sourceSet = sourceSets.smoke
+            loadedMods = [mods.vulkanmod, mods.vulkansmoke]
+            gameDirectory = project.file('run-smoke')
+            jvmArgument '-Xmx3G'
+        }
+        clientPackagedSmoke {
+            client()
+            sourceSet = sourceSets.smoke
+            loadedMods = [mods.vulkansmoke]
+            gameDirectory = project.file('run-packaged-smoke')
+            jvmArgument '-Xmx3G'
+        }
+    }
+}
+repositories { mavenCentral() }
+configurations { vulkanNatives { transitive = false } }
+def lwjglVersion = '3.3.3'
+def developmentRuntime = { String notation ->
+    [neoForge.runs.client, neoForge.runs.clientSmoke].each { run ->
+        dependencies.add(run.additionalRuntimeClasspathConfiguration.name, notation)
+    }
+}
+dependencies {
+    // Minecraft supplies LWJGL core. NeoForge loads the Vulkan Java modules via Jar-in-Jar.
+    ['lwjgl-vulkan', 'lwjgl-vma', 'lwjgl-shaderc'].each { module ->
+        jarJar(implementation("org.lwjgl:${module}:${lwjglVersion}")) {
+            version { strictly '[3.3.3,3.3.4)'; prefer lwjglVersion }
+        }
+        developmentRuntime("org.lwjgl:${module}:${lwjglVersion}")
+    }
+    ['lwjgl-vma', 'lwjgl-shaderc'].each { module ->
+        ['natives-windows', 'natives-linux', 'natives-macos', 'natives-macos-arm64'].each { platform ->
+            vulkanNatives "org.lwjgl:${module}:${lwjglVersion}:${platform}"
+            developmentRuntime("org.lwjgl:${module}:${lwjglVersion}:${platform}")
+        }
+    }
+    ['natives-macos', 'natives-macos-arm64'].each { platform ->
+        vulkanNatives "org.lwjgl:lwjgl-vulkan:${lwjglVersion}:${platform}"
+        developmentRuntime("org.lwjgl:lwjgl-vulkan:${lwjglVersion}:${platform}")
+    }
+}
+def stagePackagedSmoke = tasks.register('stagePackagedSmoke', Copy) {
+    from(tasks.named('jar'))
+    into('run-packaged-smoke/mods')
+}
+neoForge.runs.clientPackagedSmoke.taskBefore(stagePackagedSmoke)
+tasks.withType(JavaCompile).configureEach {
+    options.release = 21
+    options.encoding = 'UTF-8'
+}
+processResources {
+    inputs.property 'version', project.version
+    filesMatching('META-INF/neoforge.mods.toml') { expand version: project.version }
+}
+jar {
+    // Native classifier jars share module names. Embed their resources, not duplicate modules.
+    from({ configurations.vulkanNatives.collect { zipTree(it) } }) { exclude 'META-INF/**' }
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    from('LICENSE') { rename { "${it}_VulkanMod" } }
+    manifest.attributes('MixinConfigs': 'vulkanmod.mixins.json')
+}
+publishing { publications { mavenJava(MavenPublication) { from components.java } } }

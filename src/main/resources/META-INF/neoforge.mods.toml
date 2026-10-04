@@ -1,0 +1,25 @@
+modLoader="javafml"
+loaderVersion="[4,)"
+license="LGPL-3.0-only"
+[[mods]]
+modId="vulkanmod"
+version="${version}"
+displayName="VulkanMod"
+authors="Collateral; native NeoForge port"
+description="Vulkan renderer for Minecraft 1.21.1, ported natively to NeoForge."
+logoFile="assets/vulkanmod/Vlogo.png"
+displayTest="IGNORE_ALL_VERSION"
+[[mixins]]
+config="vulkanmod.mixins.json"
+[[dependencies.vulkanmod]]
+modId="neoforge"
+type="required"
+versionRange="[21.1.252,21.2)"
+ordering="NONE"
+side="CLIENT"
+[[dependencies.vulkanmod]]
+modId="minecraft"
+type="required"
+versionRange="[1.21.1]"
+ordering="NONE"
+side="CLIENT"
