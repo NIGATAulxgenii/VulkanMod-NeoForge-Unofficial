@@ -21,8 +21,8 @@ public abstract class ImageUtil {
 
             VkBufferImageCopy.Buffer region = VkBufferImageCopy.calloc(1, stack);
             region.bufferOffset(bufferOffset);
-            region.bufferRowLength(bufferRowLenght);   // Tightly packed
-            region.bufferImageHeight(bufferImageHeight);  // Tightly packed
+            region.bufferRowLength(bufferRowLenght);
+            region.bufferImageHeight(bufferImageHeight);
             region.imageSubresource().aspectMask(VK_IMAGE_ASPECT_COLOR_BIT);
             region.imageSubresource().mipLevel(mipLevel);
             region.imageSubresource().baseArrayLayer(0);
@@ -69,8 +69,8 @@ public abstract class ImageUtil {
 
             VkBufferImageCopy.Buffer region = VkBufferImageCopy.calloc(1, stack);
             region.bufferOffset(bufferOffset);
-            region.bufferRowLength(bufferRowLenght);   // Tightly packed
-            region.bufferImageHeight(bufferImageHeight);  // Tightly packed
+            region.bufferRowLength(bufferRowLenght);
+            region.bufferImageHeight(bufferImageHeight);
             region.imageSubresource().aspectMask(VK_IMAGE_ASPECT_COLOR_BIT);
             region.imageSubresource().mipLevel(mipLevel);
             region.imageSubresource().baseArrayLayer(0);

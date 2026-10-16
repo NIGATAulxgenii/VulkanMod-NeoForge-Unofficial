@@ -41,7 +41,7 @@ public class GlStateManagerM {
         GlFramebuffer.deleteFramebuffer(framebuffer);
     }
 
-    /** @author NeoForge port @reason Retire Vulkan renderbuffer resources. */
+    /** @author NeoForge port @reason Remove the renderbuffer registration. */
     @Overwrite(remap = false)
     public static void _glDeleteRenderbuffers(int renderbuffer) {
         GlRenderbuffer.deleteRenderbuffer(renderbuffer);

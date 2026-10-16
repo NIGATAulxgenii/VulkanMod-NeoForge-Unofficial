@@ -104,10 +104,7 @@ public class NewSmoothLightPipeline implements LightPipeline {
     }
 
     /**
-     * This method is the same as {@link #applyNonParallelFace(AoNeighborInfo, QuadView, BlockPos, SimpleDirection,
-     * QuadLightData)} but with the check for a depth of approximately 0 removed. If the quad is parallel but not
-     * aligned, all of its vertices will have the same depth and this depth must be approximately greater than 0,
-     * meaning the check for 0 will always return false.
+     * Interpolates light for inset parallel faces and applies face self-occlusion.
      * Flags: !IS_ALIGNED, IS_PARALLEL
      */
     private void applyParallelFace(AoNeighborInfo neighborInfo, QuadView quad, BlockPos pos, SimpleDirection dir, QuadLightData out) {

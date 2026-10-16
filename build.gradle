@@ -101,6 +101,23 @@ jar {
     from({ configurations.vulkanNatives.collect { zipTree(it) } }) { exclude 'META-INF/**' }
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     from('LICENSE') { rename { "${it}_VulkanMod" } }
+    from('COPYING') { rename { "${it}_VulkanMod" } }
+    from('NOTICE.md') { into 'META-INF' }
+    from('licenses') { into 'META-INF/licenses' }
     manifest.attributes('MixinConfigs': 'vulkanmod.mixins.json')
 }
+tasks.named('sourcesJar') {
+    from('LICENSE', 'COPYING', 'NOTICE.md')
+    from('licenses') { into 'META-INF/licenses' }
+}
+
+tasks.register('shaderCompileCheck', JavaExec) {
+    dependsOn 'smokeClasses'
+    classpath = sourceSets.smoke.runtimeClasspath + sourceSets.main.output + sourceSets.main.compileClasspath + configurations.vulkanNatives
+    mainClass = 'net.vulkanmod.smoke.ShaderCompileCheck'
+    args file('src/main/resources/assets/vulkanmod/shaders').absolutePath
+}
+
+tasks.named('check') { dependsOn 'shaderCompileCheck' }
+
 publishing { publications { mavenJava(MavenPublication) { from components.java } } }

@@ -1,7 +1,8 @@
 # Native NeoForge port: Minecraft 1.21.1
 
 Original source: VulkanMod 0.4.8 development branch for Fabric/Minecraft 1.21.
-Rollback: restore `../VulkanMod-1.21-original.zip` into a separate directory.
+The original project is [xCollateral/VulkanMod](https://github.com/xCollateral/VulkanMod).
+This repository maintains an unofficial NeoForge port; see [NOTICE.md](NOTICE.md).
 Target: Minecraft 1.21.1, Java 21, NeoForge 21.1.252. No Connector or Fabric runtime.
 
 ## Ownership and migration

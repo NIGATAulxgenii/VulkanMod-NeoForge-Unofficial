@@ -47,7 +47,7 @@ import org.lwjgl.glfw.GLFW;
 
 import java.nio.file.Files;
 
-/** Test mod compiled only by runClientSmoke; never included in the release jar. */
+/** Development-only integration test mod; excluded from the release JAR. */
 @Mod(value = "vulkansmoke", dist = Dist.CLIENT)
 public final class VulkanSmoke {
     private final long started = System.nanoTime();

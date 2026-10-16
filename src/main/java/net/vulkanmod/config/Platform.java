@@ -20,7 +20,6 @@ public abstract class Platform {
     //Actually detect the currently active Display Server (if both Wayland and X11 are present on the system and/or GLFW is compiled to support both)
     private static int determineDisplayServer() {
 
-        //Return Null platform if not on Linux (i.e. no X11 or Wayland)
         String xdgSessionType = System.getenv("XDG_SESSION_TYPE");
         if (xdgSessionType == null) return GLFW_ANY_PLATFORM; //Likely Android
         return switch (xdgSessionType) {

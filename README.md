@@ -1,81 +1,67 @@
-# <a href="https://github.com/xCollateral/VulkanMod"> <img src="./src/main/resources/assets/vulkanmod/Vlogo.png" width="30" height="30"/> </a> VulkanMod
+# VulkanMod NeoForge (Unofficial)
 
-This fork is a native **NeoForge** port of VulkanMod for **Minecraft 1.21.1**, using **Java 21** and **NeoForge 21.1.252**. It replaces Minecraft's OpenGL renderer with Vulkan. Fabric, Sinytra Connector and translation layers are not required.
+An unofficial client-side port of [VulkanMod](https://github.com/xCollateral/VulkanMod)
+to **Minecraft 1.21.1 / NeoForge**, maintained by **Aviello**. It replaces Minecraft's
+OpenGL renderer with Vulkan. This project is not affiliated with or endorsed by the
+original VulkanMod team.
 
-See [PORTING.md](PORTING.md) for the migration, reliability fixes and runtime verification. The upstream project links below refer to the original VulkanMod project.
+## Requirements and installation
 
-### Why?
-- Highly experimental project that overhauls and modernizes the internal renderer for Minecraft. <br>
-- Updates the renderer from OpenGL 3.2 to Vulkan 1.2.  <br>
-- Provides a potential reference for a future-proof Vulkan codebase for Minecraft Java. <br>
-- Utilizes the VulkanAPI to allow for capabilities not always possible with OpenGL. <br>
-- Including reduced CPU Overhead and use of newer, modern hardware capabilities. <br>
+- Minecraft **1.21.1**, NeoForge **21.1.252** and Java **21**.
+- A GPU and driver supporting **Vulkan 1.2**.
+- Copy `VulkanMod-1.21.1-NeoForge-0.4.8-neoforge.4.jar` into the client's `mods` folder.
+- Install one renderer only. Do not combine it with the original VulkanMod,
+  Avielix, Sodium, Embeddium, Iris or Oculus. The source JAR is not installable.
 
-### Demonstration Video:
+Fabric and Sinytra Connector are not required. Leave the mod off dedicated servers.
+The existing `vulkanmod` ID and `config/vulkanmod_settings.json` path are retained.
 
-[![Demostration Video](http://img.youtube.com/vi/sbr7UxcAmOE/0.jpg)](https://youtu.be/sbr7UxcAmOE)
+## What this port changes
 
-## FAQ
-- Remember to check the [Wiki](https://github.com/xCollateral/VulkanMod/wiki) we wrote before asking for support!
+- Native NeoForge startup, metadata, settings integration and embedded Vulkan libraries.
+- NeoForge model data, fluid rendering, extra section geometry and shader registration.
+- Fixes for shader include memory ownership, resource retirement, projection depth
+  and Cyrillic/Unicode glyph uploads.
+- Version `0.4.8-neoforge.4` corrects the Breeze wind vertex shader and prepares the
+  port's attribution, licensing and support information for a separate release.
 
-## Installation
+See [PORTING.md](PORTING.md) for implementation details and historical test evidence,
+and [CHANGELOG.md](CHANGELOG.md) for this release.
 
-### Original upstream links (not this NeoForge build):
+## Status and compatibility
 
-- [![CurseForge](https://cf.way2muchnoise.eu/full_635429_downloads.svg?badge_style=flat)](https://www.curseforge.com/minecraft/mc-mods/vulkanmod)
+**Experimental.** Historical game checks cover Windows with NVIDIA hardware.
+Linux/macOS, multiplayer and arbitrary mod/resource-pack combinations are not
+verified. Shader-pack compatibility and performance gains are not promised.
+Some OpenGL compatibility entry points are incomplete, including generated mipmaps;
+mods relying on them may render incorrectly. See the release audit before publishing.
 
-- [![Modrinth Downloads](https://img.shields.io/modrinth/dt/JYQhtZtO?logo=modrinth&label=Modrinth%20Downloads)](https://modrinth.com/mod/vulkanmod/versions)
+## Build and verify
 
-- [![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/xCollateral/VulkanMod/total?style=flat-square&logo=github&label=Github%20Downloads)](https://github.com/xCollateral/VulkanMod/releases)
+```text
+gradlew.bat build
+gradlew.bat shaderCompileCheck
+gradlew.bat runClientPackagedSmoke
+```
 
-### Install guide:
-1. Install Minecraft **1.21.1** with **NeoForge 21.1.252** and Java **21**.
-2. Build with `gradlew.bat build`, or use the supplied `VulkanMod-1.21.1-NeoForge-0.4.8-neoforge.3.jar`.
-3. Put that JAR from `build/libs` into the client's `mods` folder. Do not install the `-sources.jar`.
-4. Use a Vulkan 1.2 capable GPU and driver. This is a client renderer; other mods replacing the renderer require separate compatibility checks.
+The installable and source JARs are written to `build/libs`. `build` checks bundled
+shader compilation and active descriptor bindings; the separate shader command is
+useful for a focused rerun. The packaged smoke test
+uses a separate test client and creates its own world. It checks Vulkan startup,
+world rendering, resource reload, settings and Unicode text; a fresh PASS marker is
+required. The test mod is excluded from the installable JAR.
 
-Development verification: `gradlew.bat runClientSmoke`. To test the packaged mod and its embedded libraries: `gradlew.bat runClientPackagedSmoke`. These runs use separate test game directories and a test-only mod that is absent from the release JAR.
+## Support and licensing
 
-## Useful links
-<table>
-    <tr>
-      <th> Discord server</th>
-      <th> Ko-Fi</th>
-    </tr>
-  <tr>
-    <td style="text-align:center"> 
-        <a href="https://discord.gg/FVXg7AYR2Q"> 
-            <img alt="Discord" align="top" src="https://img.shields.io/discord/963180553547419670?style=flat-square&logo=discord&logoColor=%23FFFFFF&label=Vulkanmod%20official%20discord%20server&labelColor=%235865F2&color=%235865F2">
-        </a>
-     </td>
-    <td>
-        <a href="https://ko-fi.com/V7V7CHHJV">
-            <img alt="Static Badge" align="top" src="https://img.shields.io/badge/KoFi-%23ff5e5b?logo=ko-fi&logoColor=%23FFFFFF&link=https%3A%2F%2Fko-fi.com%2FV7V7CHHJV">
-        </a>
-    </td>
-  </tr>
-</table>
+Report problems to [this port's issue tracker](https://github.com/NIGATAulxgenii/VulkanMod-NeoForge-1.21.1/issues).
+Include the mod version, NeoForge version, GPU/driver and `latest.log`.
 
+Original VulkanMod code remains credited to xCollateral and contributors. This fork
+is distributed under **LGPL-3.0-only**, with the incorporated GPLv3 text in `COPYING`.
+Embedded dependencies retain their licenses; see [NOTICE.md](NOTICE.md) and `licenses/`.
+This fork is separate from the independent Avielix renderer.
 
-## Features
-
-### Optimizations:
->- [x] Multiple chunk culling algorithms
->- [x] Reduced CPU overhead
->- [x] Improved GPU performance
->- [x] Indirect Draw mode (reduces CPU overhead)
->- [x] Chunk rendering optimizations
-
-### New changes:
->- [x] Native Wayland support
->- [x] GPU selector
->- [x] Windowed fullscreen mode
->- [x] Revamped graphic settings menu
->- [x] Resizable render frame queue
->- [ ] Shader support
->- [ ] Removed Herobrine
-
-
-## Notes
-- This mod is still in development, please report issues in the [issue tab](https://github.com/xCollateral/VulkanMod/issues) with logs attached!
-- This mode isn't just "minecraft on vulkan" (e.g: [zink](https://docs.mesa3d.org/drivers/zink.html) ), it is a full rewrite of the minecraft renderer.
+Publication materials are in [PUBLISHING.md](PUBLISHING.md). Aviello reports writing
+a substantial part of the port, with AI assistance during development. This release
+preparation also uses AI-assisted auditing, code changes and writing. This disclosure
+refers to the port and its publication materials, not the original VulkanMod project.

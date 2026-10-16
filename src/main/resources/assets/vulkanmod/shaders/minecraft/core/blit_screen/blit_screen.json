@@ -11,7 +11,7 @@
         "UV",
         "Color"
     ],
-    "samplers": [],
+    "samplers": [{ "name": "DiffuseSampler" }],
     "uniforms": [],
     "UBOs": []
 }
