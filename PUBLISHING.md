@@ -8,8 +8,8 @@
 - License: **LGPL-3.0-only**
 - Minecraft: **1.21.1**; loader: **NeoForge**; environment: **client required, server unsupported**
 - Initial release channel: **Beta**
-- Source: https://github.com/NIGATAulxgenii/VulkanMod-NeoForge-1.21.1
-- Issues: https://github.com/NIGATAulxgenii/VulkanMod-NeoForge-1.21.1/issues
+- Source: https://github.com/NIGATAulxgenii/VulkanMod-NeoForge-Unofficial
+- Issues: https://github.com/NIGATAulxgenii/VulkanMod-NeoForge-Unofficial/issues
 - Original: https://github.com/xCollateral/VulkanMod
 
 ## English description
@@ -76,4 +76,4 @@ Policies checked during preparation on 2026-10-16:
 - https://support.modrinth.com/en/articles/16567675-content-disclosures
 - https://support.curseforge.com/support/solutions/articles/9000197279
 
-Nothing in this preparation publishes a project, pushes commits or contacts upstream.
+Publishing this repository does not submit the mod to Modrinth or CurseForge, or contact upstream.

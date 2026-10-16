@@ -5,7 +5,7 @@ VulkanMod NeoForge (Unofficial) is a modified distribution of VulkanMod.
 - Original project: xCollateral and the VulkanMod contributors,
   https://github.com/xCollateral/VulkanMod.
 - NeoForge port and maintenance: Aviello,
-  https://github.com/NIGATAulxgenii/VulkanMod-NeoForge-1.21.1.
+  https://github.com/NIGATAulxgenii/VulkanMod-NeoForge-Unofficial.
 - Target: Minecraft 1.21.1 / NeoForge 21.1.252. Local port history starts on
   2026-10-04; release-preparation changes are dated 2026-10-16.
 

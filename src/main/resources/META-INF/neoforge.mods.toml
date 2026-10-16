@@ -1,13 +1,13 @@
 modLoader="javafml"
 loaderVersion="[4,)"
 license="LGPL-3.0-only"
-issueTrackerURL="https://github.com/NIGATAulxgenii/VulkanMod-NeoForge-1.21.1/issues"
+issueTrackerURL="https://github.com/NIGATAulxgenii/VulkanMod-NeoForge-Unofficial/issues"
 [[mods]]
 modId="vulkanmod"
 version="${version}"
 displayName="VulkanMod NeoForge (Unofficial)"
 authors="xCollateral and VulkanMod contributors; NeoForge port maintained by Aviello"
-displayURL="https://github.com/NIGATAulxgenii/VulkanMod-NeoForge-1.21.1"
+displayURL="https://github.com/NIGATAulxgenii/VulkanMod-NeoForge-Unofficial"
 description="Unofficial client-side NeoForge port of VulkanMod for Minecraft 1.21.1, maintained by Aviello. Not affiliated with or endorsed by the original VulkanMod team. Experimental; other renderer replacements are unsupported."
 displayTest="IGNORE_ALL_VERSION"
 [[mixins]]

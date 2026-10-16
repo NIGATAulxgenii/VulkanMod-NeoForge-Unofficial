@@ -123,3 +123,11 @@ project upload or message to upstream was performed by this preparation.
 Modrinth's derivative-content and AI-code/text disclosures are described in
 `PUBLISHING.md`. A non-AI project icon must be supplied if a platform requires one.
 The release has not been submitted to moderation.
+
+## Repository address update - 2026-10-17
+
+The publication repository is https://github.com/NIGATAulxgenii/VulkanMod-NeoForge-Unofficial.
+Source/support links were updated after the runtime gate. The renderer and shaders
+remain unchanged; the rebuilt JAR is compared entry by entry with the tested JAR,
+allowing only the mod metadata and project notice to differ. Runtime evidence above
+continues to refer to the 2026-10-16 test, rather than a new game test.

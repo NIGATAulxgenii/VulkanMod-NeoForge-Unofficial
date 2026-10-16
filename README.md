@@ -53,7 +53,7 @@ required. The test mod is excluded from the installable JAR.
 
 ## Support and licensing
 
-Report problems to [this port's issue tracker](https://github.com/NIGATAulxgenii/VulkanMod-NeoForge-1.21.1/issues).
+Report problems to [this port's issue tracker](https://github.com/NIGATAulxgenii/VulkanMod-NeoForge-Unofficial/issues).
 Include the mod version, NeoForge version, GPU/driver and `latest.log`.
 
 Original VulkanMod code remains credited to xCollateral and contributors. This fork
