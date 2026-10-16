@@ -1,4 +1,9 @@
 # VulkanMod NeoForge (Unofficial)
+## [Скачать готовый JAR / Download](https://github.com/NIGATAulxgenii/VulkanMod-NeoForge-Unofficial/releases/download/v0.4.8-neoforge.4/VulkanMod-1.21.1-NeoForge-0.4.8-neoforge.4.jar)
+
+**Beta 0.4.8-neoforge.4 · Minecraft 1.21.1 · NeoForge · Java 21**
+
+[All release files, sources and checksums](https://github.com/NIGATAulxgenii/VulkanMod-NeoForge-Unofficial/releases/tag/v0.4.8-neoforge.4)
 
 An unofficial client-side port of [VulkanMod](https://github.com/xCollateral/VulkanMod)
 to **Minecraft 1.21.1 / NeoForge**, maintained by **Aviello**. It replaces Minecraft's
