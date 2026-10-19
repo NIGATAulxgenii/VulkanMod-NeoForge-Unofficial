@@ -24,7 +24,9 @@ import net.vulkanmod.render.chunk.build.light.data.QuadLightData;
 import net.vulkanmod.render.chunk.build.thread.BuilderResources;
 import net.vulkanmod.render.model.quad.QuadUtils;
 import net.vulkanmod.render.model.quad.QuadView;
+import net.vulkanmod.render.vertex.TerrainBuilder;
 import net.vulkanmod.render.vertex.TerrainBufferBuilder;
+import net.vulkanmod.render.chunk.cull.QuadFacing;
 import net.vulkanmod.render.vertex.VertexUtil;
 import net.vulkanmod.vulkan.util.ColorUtil;
 import org.joml.Vector3f;
@@ -65,7 +67,7 @@ public class BlockRenderer {
         BlockRenderer.blockColors = blockColors;
     }
 
-    public void renderBlock(BlockState blockState, BlockPos blockPos, Vector3f pos, TerrainBufferBuilder bufferBuilder,
+    public void renderBlock(BlockState blockState, BlockPos blockPos, Vector3f pos, TerrainBuilder bufferBuilder,
                             BakedModel model, ModelData modelData, RenderType renderType) {
         // Each layer starts from the same block origin; offsets must not accumulate.
         this.pos.set(pos);
@@ -79,7 +81,7 @@ public class BlockRenderer {
         tessellateBlock(model, bufferBuilder, seed);
     }
 
-    public void tessellateBlock(BakedModel bakedModel, TerrainBufferBuilder bufferBuilder, long seed) {
+    public void tessellateBlock(BakedModel bakedModel, TerrainBuilder bufferBuilder, long seed) {
         Vec3 offset = blockState.getOffset(resources.region, blockPos);
 
         pos.add((float) offset.x, (float) offset.y, (float) offset.z);
@@ -111,7 +113,7 @@ public class BlockRenderer {
         }
     }
 
-    private void renderModelFace(TerrainBufferBuilder bufferBuilder, List<BakedQuad> quads, LightPipeline lightPipeline, Direction cullFace) {
+    private void renderModelFace(TerrainBuilder bufferBuilder, List<BakedQuad> quads, LightPipeline lightPipeline, Direction cullFace) {
         QuadLightData quadLightData = resources.quadLightData;
 
         for (int i = 0; i < quads.size(); ++i) {
@@ -123,7 +125,7 @@ public class BlockRenderer {
         }
     }
 
-    private void putQuadData(TerrainBufferBuilder bufferBuilder, QuadView quadView, QuadLightData quadLightData) {
+    private void putQuadData(TerrainBuilder bufferBuilder, QuadView quadView, QuadLightData quadLightData) {
         float r, g, b;
         if (quadView.isTinted()) {
             int color = blockColors.getColor(blockState, resources.region, blockPos, quadView.getColorIndex());
@@ -139,7 +141,8 @@ public class BlockRenderer {
         putQuadData(bufferBuilder, pos, quadView, quadLightData, r, g, b);
     }
 
-    public static void putQuadData(TerrainBufferBuilder bufferBuilder, Vector3f pos, QuadView quad, QuadLightData quadLightData, float red, float green, float blue) {
+    public static void putQuadData(TerrainBuilder terrainBuilder, Vector3f pos, QuadView quad, QuadLightData quadLightData, float red, float green, float blue) {
+        TerrainBufferBuilder bufferBuilder = terrainBuilder.getBufferBuilder(QuadFacing.fromQuad(quad, pos));
         Vec3i normal = quad.getFacingDirection().getNormal();
         int packedNormal = VertexUtil.packNormal(normal.getX(), normal.getY(), normal.getZ());
 

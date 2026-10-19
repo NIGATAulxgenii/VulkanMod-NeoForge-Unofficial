@@ -1,5 +1,6 @@
 package net.vulkanmod.vulkan;
 
+import com.mojang.blaze3d.vertex.MeshData;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import net.vulkanmod.vulkan.memory.*;
 import net.vulkanmod.vulkan.util.VUtil;
@@ -14,6 +15,7 @@ import static org.lwjgl.vulkan.VK10.*;
 
 public class Drawer {
     private static final int INITIAL_VB_SIZE = 2000000;
+    private static final int INITIAL_IB_SIZE = 1000000;
     private static final int INITIAL_UB_SIZE = 200000;
 
     private static final LongBuffer buffers = MemoryUtil.memAllocLong(1);
@@ -23,6 +25,7 @@ public class Drawer {
 
     private int framesNum;
     private VertexBuffer[] vertexBuffers;
+    private IndexBuffer[] indexBuffers;
     private final AutoIndexBuffer quadsIndexBuffer;
     private final AutoIndexBuffer quadsIntIndexBuffer;
     private final AutoIndexBuffer linesIndexBuffer;
@@ -35,7 +38,7 @@ public class Drawer {
 
     public Drawer() {
         // Index buffers
-        this.quadsIndexBuffer = new AutoIndexBuffer(AutoIndexBuffer.QUAD_U16_MAX_VERTEX_COUNT, AutoIndexBuffer.DrawType.QUADS);
+        this.quadsIndexBuffer = new AutoIndexBuffer(65536, AutoIndexBuffer.DrawType.QUADS);
         this.quadsIntIndexBuffer = new AutoIndexBuffer(100000, AutoIndexBuffer.DrawType.QUADS);
         this.linesIndexBuffer = new AutoIndexBuffer(10000, AutoIndexBuffer.DrawType.LINES);
         this.debugLineStripIndexBuffer = new AutoIndexBuffer(10000, AutoIndexBuffer.DrawType.DEBUG_LINE_STRIP);
@@ -58,6 +61,12 @@ public class Drawer {
         this.vertexBuffers = new VertexBuffer[framesNum];
         Arrays.setAll(this.vertexBuffers, i -> new VertexBuffer(INITIAL_VB_SIZE, MemoryTypes.HOST_MEM));
 
+        if (this.indexBuffers != null) {
+            Arrays.stream(this.indexBuffers).forEach(Buffer::freeBuffer);
+        }
+        this.indexBuffers = new IndexBuffer[framesNum];
+        Arrays.setAll(this.indexBuffers, i -> new IndexBuffer(INITIAL_IB_SIZE, MemoryTypes.HOST_MEM));
+
         if (this.uniformBuffers != null) {
             Arrays.stream(this.uniformBuffers).iterator().forEachRemaining(
                     Buffer::freeBuffer
@@ -69,6 +78,7 @@ public class Drawer {
 
     public void resetBuffers(int currentFrame) {
         this.vertexBuffers[currentFrame].reset();
+        this.indexBuffers[currentFrame].reset();
         this.uniformBuffers[currentFrame].reset();
     }
 
@@ -119,6 +129,22 @@ public class Drawer {
 
     }
 
+    public void draw(ByteBuffer vertices, ByteBuffer indices, MeshData.DrawState drawState) {
+        if (indices == null) {
+            draw(vertices, drawState.mode(), drawState.format(), drawState.vertexCount());
+            return;
+        }
+
+        VertexBuffer vertexBuffer = this.vertexBuffers[this.currentFrame];
+        vertexBuffer.copyToVertexBuffer(drawState.format().getVertexSize(), drawState.vertexCount(), vertices);
+
+        IndexBuffer indexBuffer = this.indexBuffers[this.currentFrame];
+        IndexBuffer.IndexType indexType = drawState.indexType() == VertexFormat.IndexType.SHORT
+                ? IndexBuffer.IndexType.SHORT : IndexBuffer.IndexType.INT;
+        indexBuffer.copyBuffer(indices, indexType);
+        drawIndexed(vertexBuffer, indexBuffer, drawState.indexCount());
+    }
+
     public void drawIndexed(VertexBuffer vertexBuffer, IndexBuffer indexBuffer, int indexCount) {
         VkCommandBuffer commandBuffer = Renderer.getCommandBuffer();
 
@@ -150,12 +176,17 @@ public class Drawer {
             buffer = this.vertexBuffers[i];
             MemoryManager.freeBuffer(buffer.getId(), buffer.getAllocation());
 
+            buffer = this.indexBuffers[i];
+            MemoryManager.freeBuffer(buffer.getId(), buffer.getAllocation());
+
             buffer = this.uniformBuffers[i];
             MemoryManager.freeBuffer(buffer.getId(), buffer.getAllocation());
 
         }
 
         this.quadsIndexBuffer.freeBuffer();
+        this.quadsIntIndexBuffer.freeBuffer();
+        this.triangleStripIndexBuffer.freeBuffer();
         this.linesIndexBuffer.freeBuffer();
         this.triangleFanIndexBuffer.freeBuffer();
         this.debugLineStripIndexBuffer.freeBuffer();

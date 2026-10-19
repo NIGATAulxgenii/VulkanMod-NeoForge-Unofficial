@@ -8,6 +8,8 @@
   ],
   "client": [
     "window.WindowMixin",
+    "window.KeyboardActivityMixin",
+    "window.MouseActivityMixin",
     "window.WindowAccessor",
 
     "chunk.ClientPacketListenerM",
@@ -41,6 +43,7 @@
     "render.GlProgramManagerMixin",
     "render.GlStateManagerM",
     "render.LevelRendererMixin",
+    "render.clouds.LevelRendererM",
     "render.MinecraftMixin",
     "render.RenderSystemMixin",
     "render.RenderTypeM",
@@ -67,6 +70,7 @@
     "texture.image.NativeImageAccessor",
     "texture.MAbstractTexture",
     "texture.MSpriteContents",
+    "texture.SpriteTickerMixin",
     "texture.MTextureManager",
     "texture.MTextureUtil",
 

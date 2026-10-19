@@ -2,11 +2,13 @@ package net.vulkanmod.render.chunk;
 
 import com.google.common.collect.Sets;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
-import it.unimi.dsi.fastutil.objects.Reference2ReferenceOpenHashMap;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.vulkanmod.render.chunk.buffer.DrawBuffers;
+import net.vulkanmod.render.chunk.buffer.DrawParametersBuffer;
+import net.vulkanmod.render.chunk.buffer.AreaBuffer;
+import net.vulkanmod.render.chunk.cull.QuadFacing;
 import net.vulkanmod.render.chunk.build.RenderRegion;
 import net.vulkanmod.render.chunk.build.RenderRegionBuilder;
 import net.vulkanmod.render.chunk.build.TaskDispatcher;
@@ -19,11 +21,10 @@ import net.vulkanmod.render.chunk.util.Util;
 import net.vulkanmod.render.vertex.TerrainRenderType;
 
 import java.util.Collection;
-import java.util.Map;
 import java.util.Set;
 
 public class RenderSection {
-    static final Map<RenderSection, Set<BlockEntity>> globalBlockEntitiesMap = new Reference2ReferenceOpenHashMap<>();
+    private final Set<BlockEntity> globalBlockEntities = new ObjectOpenHashSet<>();
 
     private ChunkArea chunkArea;
     public byte frustumIndex;
@@ -47,7 +48,7 @@ public class RenderSection {
 
     public int xOffset, yOffset, zOffset;
 
-    private final DrawBuffers.DrawParameters[] drawParametersArray;
+    public short inAreaIndex;
 
     // Graph-info
     public byte mainDir;
@@ -61,10 +62,7 @@ public class RenderSection {
         this.yOffset = y;
         this.zOffset = z;
 
-        this.drawParametersArray = new DrawBuffers.DrawParameters[TerrainRenderType.VALUES.length];
-        for (int i = 0; i < this.drawParametersArray.length; ++i) {
-            this.drawParametersArray[i] = new DrawBuffers.DrawParameters();
-        }
+
     }
 
     public void setOrigin(int x, int y, int z) {
@@ -297,12 +295,24 @@ public class RenderSection {
         return zOffset;
     }
 
-    public DrawBuffers.DrawParameters getDrawParameters(TerrainRenderType renderType) {
-        return drawParametersArray[renderType.ordinal()];
+    public void resetDrawParameters(TerrainRenderType renderType) {
+        var buffers = this.chunkArea.getDrawBuffers();
+        AreaBuffer vertices = buffers.getAreaBuffer(renderType);
+        for (int i = 0; i < QuadFacing.COUNT; i++) {
+            long ptr = DrawParametersBuffer.getParamsPtr(buffers.getDrawParamsPtr(), this.inAreaIndex, renderType.ordinal(), i);
+            int offset = DrawParametersBuffer.getVertexOffset(ptr);
+            if (vertices != null && offset != -1) vertices.freeSegment(offset);
+            if (i == QuadFacing.UNDEFINED.ordinal() && buffers.getIndexBuffer() != null && DrawParametersBuffer.getIndexCount(ptr) > 0)
+                buffers.getIndexBuffer().freeSegment(DrawParametersBuffer.getFirstIndex(ptr));
+            DrawParametersBuffer.resetParameters(ptr);
+        }
     }
 
     public void setChunkArea(ChunkArea chunkArea) {
         this.chunkArea = chunkArea;
+        var origin = chunkArea.getPosition();
+        this.inAreaIndex = (short) ((((xOffset - origin.x) >> 4) & 7)
+                | ((((yOffset - origin.y) >> 4) & 7) << 3) | ((((zOffset - origin.z) >> 4) & 7) << 6));
 
         this.frustumIndex = chunkArea.getFrustumIndex(xOffset, yOffset, zOffset);
     }
@@ -348,16 +358,9 @@ public class RenderSection {
     }
 
     public void updateGlobalBlockEntities(Collection<BlockEntity> fullSet) {
-        if (fullSet.isEmpty())
-            return;
-
         Set<BlockEntity> set = Sets.newHashSet(fullSet);
         Set<BlockEntity> set1;
-        Set<BlockEntity> sectionSet;
-        synchronized (globalBlockEntitiesMap) {
-            sectionSet = globalBlockEntitiesMap.computeIfAbsent(this,
-                    (section) -> new ObjectOpenHashSet<>());
-        }
+        Set<BlockEntity> sectionSet = this.globalBlockEntities;
 
         if (sectionSet.size() != fullSet.size() || !sectionSet.containsAll(fullSet)) {
             set1 = Sets.newHashSet(sectionSet);
@@ -373,6 +376,7 @@ public class RenderSection {
 
     private void reset() {
         this.cancelTasks();
+        this.updateGlobalBlockEntities(java.util.Collections.emptySet());
         this.compileStatus.compiledSection = CompiledSection.UNCOMPILED;
         this.dirty = true;
         this.visibility = 0;
@@ -386,7 +390,7 @@ public class RenderSection {
             return;
 
         for (TerrainRenderType r : TerrainRenderType.VALUES) {
-            this.getDrawParameters(r).reset(this.chunkArea, r);
+            this.resetDrawParameters(r);
         }
     }
 

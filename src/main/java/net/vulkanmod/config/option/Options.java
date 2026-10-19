@@ -5,10 +5,13 @@ import net.minecraft.client.*;
 import net.minecraft.network.chat.Component;
 import net.vulkanmod.Initializer;
 import net.vulkanmod.config.Config;
+import net.vulkanmod.config.InactivityLimit;
 import net.vulkanmod.config.gui.OptionBlock;
 import net.vulkanmod.config.video.VideoModeManager;
 import net.vulkanmod.config.video.VideoModeSet;
+import net.vulkanmod.config.video.WindowMode;
 import net.vulkanmod.render.chunk.build.light.LightMode;
+import net.vulkanmod.render.chunk.WorldRenderer;
 import net.vulkanmod.vulkan.Renderer;
 import net.vulkanmod.vulkan.device.DeviceManager;
 
@@ -76,19 +79,17 @@ public abstract class Options {
                 new OptionBlock("", new Option<?>[]{
                         resolutionOption,
                         RefreshRate,
-                        new SwitchOption(Component.translatable("options.fullscreen"),
+                        new CyclingOption<>(Component.translatable("vulkanmod.options.windowMode"),
+                                WindowMode.values(),
                                 value -> {
-                                    minecraftOptions.fullscreen().set(value);
-//                            window.toggleFullScreen();
+                                    minecraftOptions.fullscreen().set(value == WindowMode.EXCLUSIVE_FULLSCREEN);
+                                    config.windowMode = value.ordinal();
+                                    config.windowedFullscreen = value == WindowMode.WINDOWED_FULLSCREEN;
                                     fullscreenDirty = true;
                                 },
-                                () -> minecraftOptions.fullscreen().get()),
-                        new SwitchOption(Component.translatable("vulkanmod.options.windowedFullscreen"),
-                                value -> {
-                                    config.windowedFullscreen = value;
-                                    fullscreenDirty = true;
-                                },
-                                () -> config.windowedFullscreen),
+                                () -> minecraftOptions.fullscreen().get() ? WindowMode.EXCLUSIVE_FULLSCREEN
+                                        : config.windowMode == 1 ? WindowMode.WINDOWED_FULLSCREEN : WindowMode.WINDOWED)
+                                .setTranslator(value -> Component.translatable(value.translationKey())),
                         new RangeOption(Component.translatable("options.framerateLimit"),
                                 10, 260, 10,
                                 value -> Component.nullToEmpty(value == 260 ?
@@ -105,6 +106,11 @@ public abstract class Options {
                                     window.updateVsync(value);
                                 },
                                 () -> minecraftOptions.enableVsync().get()),
+                        new CyclingOption<>(Component.translatable("vulkanmod.options.inactivityLimit"),
+                                InactivityLimit.values(),
+                                value -> config.inactivityLimit = value,
+                                () -> config.inactivityLimit)
+                                .setTranslator(value -> Component.translatable("vulkanmod.options.inactivityLimit." + value.name().toLowerCase(java.util.Locale.ROOT))),
                 }),
                 new OptionBlock("", new Option<?>[]{
                         new RangeOption(Component.translatable("options.guiScale"),
@@ -177,6 +183,10 @@ public abstract class Options {
                                 value -> minecraftOptions.cloudStatus().set(value),
                                 () -> minecraftOptions.cloudStatus().get())
                                 .setTranslator(value -> Component.translatable(value.getKey())),
+                        new RangeOption(Component.translatable("vulkanmod.options.cloudDistance"),
+                                2, 128, 1,
+                                value -> config.cloudDistance = value,
+                                () -> config.cloudDistance),
                         new CyclingOption<>(Component.translatable("options.ao"),
                                 new Integer[]{LightMode.FLAT, LightMode.SMOOTH, LightMode.SUB_BLOCK},
                                 (value) -> {
@@ -256,6 +266,12 @@ public abstract class Options {
                                 },
                                 () -> config.uniqueOpaqueLayer)
                                 .setTooltip(Component.translatable("vulkanmod.options.uniqueOpaqueLayer.tooltip")),
+                        new SwitchOption(Component.translatable("vulkanmod.options.backfaceCulling"),
+                                value -> {
+                                    config.backFaceCulling = value;
+                                    minecraft.levelRenderer.allChanged();
+                                }, () -> config.backFaceCulling)
+                                .setTooltip(Component.translatable("vulkanmod.options.backfaceCulling.tooltip")),
                         new SwitchOption(Component.translatable("vulkanmod.options.indirectDraw"),
                                 value -> config.indirectDraw = value,
                                 () -> config.indirectDraw)
@@ -268,6 +284,17 @@ public abstract class Options {
     public static OptionBlock[] getOtherOpts() {
         return new OptionBlock[]{
                 new OptionBlock("", new Option[]{
+                        new RangeOption(Component.translatable("vulkanmod.options.builderThreads"),
+                                0, Math.max(Runtime.getRuntime().availableProcessors() - 1, 1), 1,
+                                value -> {
+                                    config.builderThreads = value;
+                                    if (minecraft.level != null) WorldRenderer.getInstance().getTaskDispatcher().createThreads(value);
+                                }, () -> config.builderThreads)
+                                .setTranslator(value -> value == 0
+                                        ? Component.translatable("vulkanmod.options.builderThreads.auto")
+                                        : Component.literal(String.valueOf(value))),
+                        new SwitchOption(Component.translatable("vulkanmod.options.textureAnimations"),
+                                value -> config.textureAnimations = value, () -> config.textureAnimations),
                         new RangeOption(Component.translatable("vulkanmod.options.frameQueue"),
                                 2, 5, 1,
                                 value -> {

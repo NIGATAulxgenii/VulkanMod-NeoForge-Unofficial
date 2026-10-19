@@ -56,6 +56,11 @@ public final class VulkanSmoke {
     private final AtomicInteger additionalGeometryCalls = new AtomicInteger();
     private int shaderRegistrations;
     private boolean whiteTextPassed;
+    private PortRenderCheck portRenderCheck;
+    private PortWindowCheck windowCheck;
+    private PortBenchmark benchmark;
+    private final boolean baseline = Boolean.getBoolean("vulkanmod.smokeBaseline") || Boolean.getBoolean("vulkanmod.benchmarkOnly");
+    private final boolean benchmarkEnabled = Boolean.getBoolean("vulkanmod.benchmark");
     private final String existingWorld = System.getProperty("vulkanmod.smokeWorld");
 
     private void beginWorld(Minecraft mc) {
@@ -70,6 +75,8 @@ public final class VulkanSmoke {
         mc.options.renderDistance().set(6);
         mc.options.simulationDistance().set(5);
         mc.options.pauseOnLostFocus = false;
+        if (baseline && benchmarkEnabled) mc.options.cloudStatus().set(net.minecraft.client.CloudStatus.OFF);
+        else mc.options.cloudStatus().set(net.minecraft.client.CloudStatus.FANCY);
         world = "VulkanSmoke-" + System.currentTimeMillis();
         mc.createWorldOpenFlows().createFreshLevel(world,
                 new LevelSettings(world, GameType.CREATIVE, false, Difficulty.PEACEFUL, true, new GameRules(), WorldDataConfiguration.DEFAULT),
@@ -102,6 +109,9 @@ public final class VulkanSmoke {
 
     public VulkanSmoke(IEventBus modBus) {
         NeoForge.EVENT_BUS.addListener(this::tick);
+        NeoForge.EVENT_BUS.addListener((net.neoforged.neoforge.client.event.RenderFrameEvent.Post event) -> {
+            if (benchmark != null) benchmark.frame();
+        });
         NeoForge.EVENT_BUS.addListener(this::additionalGeometry);
         modBus.addListener(this::registerShader);
     }
@@ -119,20 +129,20 @@ public final class VulkanSmoke {
     private void additionalGeometry(AddSectionGeometryEvent event) {
         // getLevel enforces main-thread collection. The callback runs in a meshing worker.
         event.getLevel();
-        if (!event.getSectionOrigin().equals(new BlockPos(0, 96, 0))
+        if (!event.getSectionOrigin().equals(new BlockPos(0, 192, 0))
                 && !event.getSectionOrigin().equals(new BlockPos(0, 256, 0))) return;
         var sprite = Minecraft.getInstance().getBlockRenderer().getBlockModel(Blocks.STONE.defaultBlockState()).getParticleIcon();
         event.addRenderer(context -> {
             var vertices = context.getOrCreateChunkBuffer(RenderType.solid());
-            vertices.addVertex(3, 5, 1).setColor(0, 255, 255, 255).setUv(sprite.getU0(), sprite.getV1()).setLight(0x00F000F0).setNormal(0, 0, 1);
-            vertices.addVertex(4, 5, 1).setColor(0, 255, 255, 255).setUv(sprite.getU1(), sprite.getV1()).setLight(0x00F000F0).setNormal(0, 0, 1);
-            vertices.addVertex(4, 6, 1).setColor(0, 255, 255, 255).setUv(sprite.getU1(), sprite.getV0()).setLight(0x00F000F0).setNormal(0, 0, 1);
-            vertices.addVertex(3, 6, 1).setColor(0, 255, 255, 255).setUv(sprite.getU0(), sprite.getV0()).setLight(0x00F000F0).setNormal(0, 0, 1);
+            vertices.addVertex(3, 9, 1).setColor(0, 255, 255, 255).setUv(sprite.getU0(), sprite.getV1()).setLight(0x00F000F0).setNormal(0, 0, 1);
+            vertices.addVertex(4, 9, 1).setColor(0, 255, 255, 255).setUv(sprite.getU1(), sprite.getV1()).setLight(0x00F000F0).setNormal(0, 0, 1);
+            vertices.addVertex(4, 10, 1).setColor(0, 255, 255, 255).setUv(sprite.getU1(), sprite.getV0()).setLight(0x00F000F0).setNormal(0, 0, 1);
+            vertices.addVertex(3, 10, 1).setColor(0, 255, 255, 255).setUv(sprite.getU0(), sprite.getV0()).setLight(0x00F000F0).setNormal(0, 0, 1);
             additionalGeometryCalls.incrementAndGet();
         });
     }
 
-    private void screenshot(Minecraft mc, String name) throws Exception {
+    static void screenshot(Minecraft mc, String name) throws Exception {
         var directory = mc.gameDirectory.toPath().resolve("verification");
         Files.createDirectories(directory);
         try (var image = Screenshot.takeScreenshot(mc.getMainRenderTarget())) {
@@ -208,6 +218,14 @@ public final class VulkanSmoke {
                     throw new IllegalStateException("Minecraft window still uses OpenGL");
                 if (Vulkan.getVkDevice() == null) throw new IllegalStateException("Vulkan device missing");
                 regressionChecks(mc);
+                if (!baseline) {
+                    PortSettingsCheck.configAndAnimations(mc);
+                    PortCompatibilityCheck.run();
+                    PortSettingsCheck.spriteFrames();
+                    PortSettingsCheck.readbackDuringTick(mc);
+                    UploadSynchronizationCheck.run();
+                }
+                Initializer.LOGGER.info("SMOKE port settings PASS: legacy config, new fields, animation pause/resume");
                 screenshot(mc, "title");
                 phase = 6;
                 ticks = 0;
@@ -225,6 +243,18 @@ public final class VulkanSmoke {
             } else if (phase == 6) {
                 if (++ticks < 40) return;
                 checkWhiteText(mc);
+                mc.setScreen(new ImmediateIndexScreen());
+                phase = 8;
+                ticks = 0;
+            } else if (phase == 8) {
+                if (++ticks < 20) return;
+                ImmediateIndexScreen.check(mc);
+                Initializer.LOGGER.info("SMOKE immediate indices PASS: sequential control, sorted drawWithShader/draw, automatic/sorted 32-bit indices");
+                if (!baseline) windowCheck = new PortWindowCheck(mc);
+                phase = 10;
+                ticks = 0;
+            } else if (phase == 10) {
+                if (windowCheck != null && !windowCheck.tick(mc)) return;
                 var title = new TitleScreen();
                 mc.setScreen(title);
                 var singleplayer = title.children().stream().filter(child -> child instanceof Button button
@@ -251,16 +281,30 @@ public final class VulkanSmoke {
                     var server = mc.getSingleplayerServer();
                     var level = server.overworld();
                     for (int x = -6; x <= 6; x++) for (int z = -6; z <= 6; z++) {
-                        level.setBlock(new BlockPos(x, 100, z), Blocks.STONE.defaultBlockState(), 3);
-                        for (int y = 101; y <= 106; y++) level.setBlock(new BlockPos(x, y, z), Blocks.AIR.defaultBlockState(), 3);
+                        level.setBlock(new BlockPos(x, 200, z), Blocks.STONE.defaultBlockState(), 3);
+                        for (int y = 201; y <= 216; y++) level.setBlock(new BlockPos(x, y, z), Blocks.AIR.defaultBlockState(), 3);
                     }
-                    level.setBlock(new BlockPos(-2, 101, 0), Blocks.WATER.defaultBlockState(), 3);
-                    level.setBlock(new BlockPos(-1, 101, 0), Blocks.GLASS.defaultBlockState(), 3);
-                    level.setBlock(new BlockPos(0, 101, 0), Blocks.CHEST.defaultBlockState(), 3);
-                    level.setBlock(new BlockPos(1, 101, 0), Blocks.OAK_LEAVES.defaultBlockState(), 3);
-                    level.setBlock(new BlockPos(2, 101, 0), Blocks.GLOWSTONE.defaultBlockState(), 3);
+                    level.setBlock(new BlockPos(-2, 201, 0), Blocks.WATER.defaultBlockState(), 3);
+                    level.setBlock(new BlockPos(-1, 201, 0), Blocks.GLASS.defaultBlockState(), 3);
+                    level.setBlock(new BlockPos(0, 201, 0), Blocks.CHEST.defaultBlockState(), 3);
+                    level.setBlock(new BlockPos(1, 201, 0), Blocks.OAK_LEAVES.defaultBlockState().setValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.PERSISTENT, true), 3);
+                    level.setBlock(new BlockPos(2, 201, 0), Blocks.GLOWSTONE.defaultBlockState(), 3);
+                    for (BlockPos position : new BlockPos[] {new BlockPos(-3, 201, 0), new BlockPos(-2, 201, -1), new BlockPos(-2, 201, 1)})
+                        level.setBlock(position, Blocks.GLASS.defaultBlockState(), 3);
+                    for (int x = 1; x <= 3; x++) for (int z = 1; z <= 3; z++)
+                        level.setBlock(new BlockPos(x, 200, z), Blocks.IRON_BLOCK.defaultBlockState(), 3);
+                    level.setBlock(new BlockPos(2, 201, 2), Blocks.BEACON.defaultBlockState(), 3);
+                    var fence = new BlockPos(-4, 201, 2);
+                    level.setBlock(fence, Blocks.OAK_FENCE.defaultBlockState(), 3);
+                    var cow = net.minecraft.world.entity.EntityType.COW.create(level);
+                    if (cow == null) throw new IllegalStateException("Leash fixture failed");
+                    cow.setNoAi(true);
+                    cow.setPos(-3, 201, 3);
+                    level.addFreshEntity(cow);
+                    cow.setLeashedTo(net.minecraft.world.entity.decoration.LeashFenceKnotEntity.getOrCreateKnot(level, fence), true);
+                    level.getGameRules().getRule(GameRules.RULE_DAYLIGHT).set(false, server);
                     level.setDayTime(1000);
-                    server.getPlayerList().getPlayer(uuid).teleportTo(0.5, 102, 5.5);
+                    server.getPlayerList().getPlayer(uuid).teleportTo(0.5, 202, 5.5);
                 });
                 mc.player.setYRot(180);
                 mc.player.setXRot(15);
@@ -275,23 +319,53 @@ public final class VulkanSmoke {
                 if (mc.screen != null) throw new IllegalStateException("World view obscured by " + mc.screen);
                 if (WorldRenderer.getInstance().getVisibleSectionsCount() == 0) throw new IllegalStateException("No visible Vulkan chunk sections");
                 if (existingWorld == null) {
-                    if (!mc.level.getBlockState(new BlockPos(-1, 101, 0)).is(Blocks.GLASS)
-                            || !mc.level.getBlockState(new BlockPos(0, 101, 0)).is(Blocks.CHEST))
+                    if (!mc.level.getBlockState(new BlockPos(-1, 201, 0)).is(Blocks.GLASS)
+                            || !mc.level.getBlockState(new BlockPos(0, 201, 0)).is(Blocks.CHEST))
                         throw new IllegalStateException("Test scene did not reach the client");
-                    if (!WorldRenderer.getInstance().isSectionCompiled(new BlockPos(0, 101, 0))) throw new IllegalStateException("Test blocks were not compiled by Vulkan");
+                    if (!WorldRenderer.getInstance().isSectionCompiled(new BlockPos(0, 201, 0))) throw new IllegalStateException("Test blocks were not compiled by Vulkan");
                     if (additionalGeometryCalls.get() == 0) throw new IllegalStateException("NeoForge additional geometry callbacks were not executed");
                     var emptyRegion = new RenderRegionBuilder().createRegion(mc.level, 0, 16, 0);
                     if (emptyRegion == null || emptyRegion.additionalRenderers.isEmpty()) throw new IllegalStateException("Geometry in an empty section was discarded");
                     if (emptyRegion.getAuxLightManager(new net.minecraft.world.level.ChunkPos(0, 0)) == null)
                         throw new IllegalStateException("Region discarded NeoForge's auxiliary light manager");
                 }
+                CancelledUploadCheck.run();
+                PortSettingsCheck.workers();
+                Initializer.LOGGER.info("SMOKE builder threads PASS: 1, 2, auto, restart without deadlock");
+                Initializer.LOGGER.info("SMOKE dismissed uploads PASS: full layers and index-only buffers released exactly once");
                 screenshot(mc, "world");
+                ticks = 0;
+                if (baseline && benchmarkEnabled) {
+                    benchmark = new PortBenchmark(mc);
+                    phase = 11;
+                } else if (existingWorld == null) {
+                    portRenderCheck = new PortRenderCheck(mc);
+                    phase = 9;
+                } else {
+                    phase = 3;
+                    mc.reloadResourcePacks();
+                }
+            } else if (phase == 9) {
+                if (!portRenderCheck.tick(mc)) return;
+                if (benchmarkEnabled) {
+                    benchmark = new PortBenchmark(mc);
+                    phase = 11;
+                    return;
+                }
+                phase = 3;
+                ticks = 0;
+                mc.reloadResourcePacks();
+            } else if (phase == 11) {
+                if (!benchmark.isDone()) return;
                 phase = 3;
                 ticks = 0;
                 mc.reloadResourcePacks();
             } else if (phase == 3 && mc.getOverlay() == null) {
                 if (++ticks < 100) return;
                 if (shaderRegistrations < 2) throw new IllegalStateException("NeoForge shader event did not survive reload");
+                if (existingWorld == null && mc.options.getCloudsType() != net.minecraft.client.CloudStatus.OFF
+                        && PortRenderCheck.field(PortRenderCheck.cloudRenderer(mc), "cloudBuffer") == null)
+                    throw new IllegalStateException("Cloud VBO did not survive resource reload");
                 screenshot(mc, "world-after-reload");
                 phase = 4;
                 ticks = 0;
@@ -311,6 +385,15 @@ public final class VulkanSmoke {
                     phase = 5;
                     mc.stop();
                     return;
+                }
+                if (!baseline && existingWorld == null) {
+                    var save = Minecraft.class.getDeclaredMethod("emergencySave");
+                    save.setAccessible(true);
+                    save.invoke(mc);
+                    if (mc.level != null || mc.getSingleplayerServer() != null
+                            || !Files.isRegularFile(mc.gameDirectory.toPath().resolve("saves").resolve(world).resolve("level.dat")))
+                        throw new IllegalStateException("Emergency save did not finish unloading the fresh world");
+                    Initializer.LOGGER.info("SMOKE emergency save PASS: vanilla path, integrated server stopped, level saved/unloaded");
                 }
                 Initializer.LOGGER.info("SMOKE PASS: native NeoForge, NO_API window, Vulkan device, rendered {} world, resource reload, video settings, white text, sound playback", existingWorld == null ? "fresh (fluids, block entities, additional geometry)" : "copied");
                 Files.writeString(mc.gameDirectory.toPath().resolve("verification/PASS.txt"), "Minecraft 1.21.1 / NeoForge 21.1.252\nWorld=" + world + "\nWhiteText=true\nAdditionalGeometryCalls=" + additionalGeometryCalls.get() + "\nShaderRegistrations=" + shaderRegistrations + "\n");

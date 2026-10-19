@@ -21,6 +21,8 @@ import net.vulkanmod.render.chunk.build.UploadBuffer;
 import net.vulkanmod.render.chunk.build.thread.BuilderResources;
 import net.vulkanmod.render.chunk.build.thread.ThreadBuilderPack;
 import net.vulkanmod.render.vertex.TerrainBufferBuilder;
+import net.vulkanmod.render.vertex.TerrainBuilder;
+import net.vulkanmod.render.chunk.cull.QuadFacing;
 import net.vulkanmod.render.vertex.TerrainRenderType;
 import net.vulkanmod.render.vertex.TerrainVertexConsumer;
 import com.mojang.blaze3d.vertex.PoseStack;
@@ -123,14 +125,14 @@ public class BuildTask extends ChunkTask {
 
                     FluidState fluidState = blockState.getFluidState();
                     TerrainRenderType renderType;
-                    TerrainBufferBuilder bufferBuilder;
+                    TerrainBuilder bufferBuilder;
                     if (!fluidState.isEmpty()) {
                         renderType = TerrainRenderType.get(ItemBlockRenderTypes.getRenderLayer(fluidState));
 
                         bufferBuilder = getBufferBuilder(bufferBuilders, renderType);
                         bufferBuilder.setBlockAttributes(blockState);
 
-                        liquidRenderer.renderLiquid(blockState, fluidState, blockPos, bufferBuilder);
+                        liquidRenderer.renderLiquid(blockState, fluidState, blockPos, bufferBuilder.getBufferBuilder(QuadFacing.UNDEFINED.ordinal()));
                     }
 
                     if (blockState.getRenderShape() == RenderShape.MODEL) {
@@ -139,6 +141,7 @@ public class BuildTask extends ChunkTask {
                         random.setSeed(blockState.getSeed(blockPos));
                         pos.set(blockPos.getX() & 15, blockPos.getY() & 15, blockPos.getZ() & 15);
                         for (var layer : model.getRenderTypes(blockState, random, data)) {
+                            pos.set(blockPos.getX() & 15, blockPos.getY() & 15, blockPos.getZ() & 15);
                             renderType = TerrainRenderType.get(layer);
                             bufferBuilder = getBufferBuilder(bufferBuilders, renderType);
                             bufferBuilder.setBlockAttributes(blockState);
@@ -153,26 +156,24 @@ public class BuildTask extends ChunkTask {
             var consumers = new EnumMap<TerrainRenderType, TerrainVertexConsumer>(TerrainRenderType.class);
             var context = new AddSectionGeometryEvent.SectionRenderingContext(layer -> {
                 var type = compactRenderTypes(TerrainRenderType.get(layer));
-                return consumers.computeIfAbsent(type, key -> new TerrainVertexConsumer(bufferBuilders.builder(key)));
+                return consumers.computeIfAbsent(type, key -> new TerrainVertexConsumer(bufferBuilders.builder(key).getBufferBuilder(QuadFacing.UNDEFINED.ordinal())));
             }, region, new PoseStack());
             for (var renderer : region.additionalRenderers) renderer.render(context);
             consumers.values().forEach(TerrainVertexConsumer::finish);
         }
 
-        TerrainBufferBuilder translucentBufferBuilder = bufferBuilders.builder(TerrainRenderType.TRANSLUCENT);
-        if (!translucentBufferBuilder.isCurrentBatchEmpty()) {
+        TerrainBuilder translucentBufferBuilder = bufferBuilders.builder(TerrainRenderType.TRANSLUCENT);
+        if (translucentBufferBuilder.getBufferBuilder(QuadFacing.UNDEFINED.ordinal()).getVertices() > 0) {
             translucentBufferBuilder.setupQuadSortingPoints();
             translucentBufferBuilder.setupQuadSorting(camX - (float) startBlockPos.getX(), camY - (float) startBlockPos.getY(), camZ - (float) startBlockPos.getZ());
             compileResult.transparencyState = translucentBufferBuilder.getSortState();
         }
 
         for (TerrainRenderType renderType : TerrainRenderType.VALUES) {
-            TerrainBufferBuilder.RenderedBuffer renderedBuffer = bufferBuilders.builder(renderType).end();
-            if (renderedBuffer != null) {
-                UploadBuffer uploadBuffer = new UploadBuffer(renderedBuffer);
-                compileResult.renderedLayers.put(renderType, uploadBuffer);
-                renderedBuffer.release();
-            }
+            TerrainBuilder builder = bufferBuilders.builder(renderType);
+            var drawState = builder.endDrawing();
+            if (!builder.isEmpty()) compileResult.renderedLayers.put(renderType, new UploadBuffer(builder, drawState));
+            builder.clear();
         }
 
         compileResult.visibilitySet = visGraph.resolve();
@@ -182,12 +183,12 @@ public class BuildTask extends ChunkTask {
 
     private void setupBufferBuilders(ThreadBuilderPack builderPack) {
         for (TerrainRenderType renderType : TerrainRenderType.VALUES) {
-            TerrainBufferBuilder bufferBuilder = builderPack.builder(renderType);
+            TerrainBuilder bufferBuilder = builderPack.builder(renderType);
             bufferBuilder.begin();
         }
     }
 
-    private TerrainBufferBuilder getBufferBuilder(ThreadBuilderPack bufferBuilders, TerrainRenderType renderType) {
+    private TerrainBuilder getBufferBuilder(ThreadBuilderPack bufferBuilders, TerrainRenderType renderType) {
         renderType = compactRenderTypes(renderType);
         return bufferBuilders.builder(renderType);
     }

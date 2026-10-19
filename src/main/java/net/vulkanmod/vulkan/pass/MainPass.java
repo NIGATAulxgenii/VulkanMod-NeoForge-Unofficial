@@ -11,6 +11,8 @@ public interface MainPass {
 
     void end(VkCommandBuffer commandBuffer);
 
+    default void cleanUp() {}
+
     default void mainTargetBindWrite() {}
 
     default void mainTargetUnbindWrite() {}

@@ -55,6 +55,7 @@ public class RenderRegion implements BlockAndTintGetter {
     private final DataLayer[][] lightData;
 
     private TintCache tintCache;
+    private final net.minecraft.world.level.biome.BiomeManager biomeSnapshot;
 
     private final Map<BlockPos, BlockEntity> blockEntityMap;
 
@@ -93,6 +94,14 @@ public class RenderRegion implements BlockAndTintGetter {
         this.blockStateGetter = level.isDebug() ? this::debugBlockState : this::defaultBlockState;
 
         this.blendRadius = Minecraft.getInstance().options.biomeBlendRadius().get();
+        int quartWidth = WIDTH * 4;
+        int quartX = minSecX << 2, quartY = minSecY << 2, quartZ = minSecZ << 2;
+        @SuppressWarnings("unchecked")
+        net.minecraft.core.Holder<net.minecraft.world.level.biome.Biome>[] biomes = new net.minecraft.core.Holder[quartWidth * quartWidth * quartWidth];
+        for (int qx = 0; qx < quartWidth; qx++) for (int qy = 0; qy < quartWidth; qy++) for (int qz = 0; qz < quartWidth; qz++)
+            biomes[(qx * quartWidth + qy) * quartWidth + qz] = level.getNoiseBiome(quartX + qx, quartY + qy, quartZ + qz);
+        this.biomeSnapshot = level.getBiomeManager().withDifferentSource((qx, qy, qz) ->
+                biomes[((qx - quartX) * quartWidth + qy - quartY) * quartWidth + qz - quartZ]);
     }
 
     public void loadBlockStates() {
@@ -161,7 +170,7 @@ public class RenderRegion implements BlockAndTintGetter {
 
     public void initTintCache(TintCache tintCache) {
         this.tintCache = tintCache;
-        this.tintCache.init(blendRadius, minSecX + 1, minSecY + 1, minSecZ + 1);
+        this.tintCache.init(pos -> this.biomeSnapshot.getBiome(pos).value(), blendRadius, minSecX + 1, minSecY + 1, minSecZ + 1);
     }
 
     public BlockState getBlockState(BlockPos blockPos) {

@@ -17,6 +17,9 @@ public class Config {
     public int frameQueueSize = 2;
     public VideoModeSet.VideoMode videoMode = VideoModeManager.getFirstAvailable().getVideoMode();
     public boolean windowedFullscreen = false;
+    public int windowMode = -1;
+    public int cloudDistance = 128;
+    public InactivityLimit inactivityLimit = InactivityLimit.AFK;
 
     public int advCulling = 2;
     public boolean indirectDraw = false;
@@ -26,8 +29,13 @@ public class Config {
     public int device = -1;
 
     public int ambientOcclusion = 1;
+    public int builderThreads = 0;
+    public boolean backFaceCulling = true;
+    public boolean textureAnimations = true;
 
     public void write() {
+        if (this.windowMode == -1) this.windowMode = this.windowedFullscreen ? 1 : 0;
+        this.windowedFullscreen = this.windowMode == 1;
 
         if(!Files.exists(CONFIG_PATH.getParent())) {
             try {
@@ -67,6 +75,12 @@ public class Config {
             config = null;
         }
 
+        if (config != null) {
+            if (config.windowMode == -1) config.windowMode = config.windowedFullscreen ? 1 : 0;
+            if (config.windowMode < 0 || config.windowMode > 2) config.windowMode = 0;
+            config.cloudDistance = Math.clamp(config.cloudDistance, 2, 128);
+            if (config.inactivityLimit == null) config.inactivityLimit = InactivityLimit.AFK;
+        }
         return config;
     }
 }

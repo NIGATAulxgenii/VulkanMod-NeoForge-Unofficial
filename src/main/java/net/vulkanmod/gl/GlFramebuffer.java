@@ -5,6 +5,8 @@ import it.unimi.dsi.fastutil.ints.Int2ReferenceOpenHashMap;
 import net.minecraft.client.Minecraft;
 import net.vulkanmod.vulkan.Renderer;
 import net.vulkanmod.vulkan.VRenderSystem;
+import net.vulkanmod.vulkan.Vulkan;
+import net.vulkanmod.vulkan.texture.ImageUtil;
 import net.vulkanmod.vulkan.framebuffer.Framebuffer;
 import net.vulkanmod.vulkan.framebuffer.RenderPass;
 import net.vulkanmod.vulkan.texture.VulkanImage;
@@ -18,6 +20,7 @@ public class GlFramebuffer {
     private static int ID_COUNTER = 1;
     private static final Int2ReferenceOpenHashMap<GlFramebuffer> map = new Int2ReferenceOpenHashMap<>();
     private static int boundId = 0;
+    private static int readId = 0;
     private static GlFramebuffer boundFramebuffer;
 
     public static void resetBoundFramebuffer() {
@@ -39,6 +42,7 @@ public class GlFramebuffer {
         VRenderSystem.disableCull();
 
         boundId = glFramebuffer.id;
+        boundFramebuffer = glFramebuffer;
     }
 
     public static int genFramebufferId() {
@@ -49,6 +53,11 @@ public class GlFramebuffer {
     }
 
     public static void bindFramebuffer(int target, int id) {
+        if (id != 0 && !map.containsKey(id)) throw new IllegalArgumentException("Unknown framebuffer: " + id);
+        if (target == GL30.GL_READ_FRAMEBUFFER || target == GL30.GL_FRAMEBUFFER) readId = id;
+        if (target == GL30.GL_READ_FRAMEBUFFER) return;
+        if (target != GL30.GL_FRAMEBUFFER && target != GL30.GL_DRAW_FRAMEBUFFER)
+            throw new IllegalArgumentException("Unsupported framebuffer target: " + target);
         // target
         // 36160 GL_FRAMEBUFFER
         // 36161 GL_RENDERBUFFER
@@ -79,6 +88,7 @@ public class GlFramebuffer {
         }
 
         boundFramebuffer = glFramebuffer;
+        boundId = id;
     }
 
     public static void deleteFramebuffer(int id) {
@@ -86,13 +96,14 @@ public class GlFramebuffer {
             return;
         }
 
-        boundFramebuffer = map.remove(id);
-
-        if (boundFramebuffer == null)
-            throw new NullPointerException("bound framebuffer is null");
-
-        boundFramebuffer.cleanUp();
-        boundFramebuffer = null;
+        GlFramebuffer removed = map.remove(id);
+        if (removed == null) return;
+        if (readId == id) readId = 0;
+        if (boundFramebuffer == removed) {
+            Renderer.getInstance().endRenderPass();
+            resetBoundFramebuffer();
+        }
+        removed.cleanUp();
     }
 
     public static void framebufferTexture2D(int target, int attachment, int texTarget, int texture, int level) {
@@ -117,8 +128,31 @@ public class GlFramebuffer {
     }
 
     public static int glCheckFramebufferStatus(int target) {
-        //TODO
+        int id = target == GL30.GL_READ_FRAMEBUFFER ? readId : boundId;
+        if (id == 0) return GL30.GL_FRAMEBUFFER_COMPLETE;
+        GlFramebuffer framebuffer = map.get(id);
+        if (framebuffer == null || framebuffer.colorAttachment == null)
+            return GL30.GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT;
+        if (framebuffer.depthAttachment != null
+                && (framebuffer.colorAttachment.width != framebuffer.depthAttachment.width
+                || framebuffer.colorAttachment.height != framebuffer.depthAttachment.height))
+            return GL30.GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT;
         return GL30.GL_FRAMEBUFFER_COMPLETE;
+    }
+
+    public static void blitFramebuffer(int srcX0, int srcY0, int srcX1, int srcY1,
+                                       int dstX0, int dstY0, int dstX1, int dstY1, int mask, int filter) {
+        if ((mask & ~(GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT)) != 0)
+            throw new UnsupportedOperationException("Stencil blits are not supported");
+        GlFramebuffer source = map.get(readId), destination = map.get(boundId);
+        if ((mask & GL11.GL_COLOR_BUFFER_BIT) != 0)
+            ImageUtil.blitImage(source == null ? Vulkan.getSwapChain().getColorAttachment() : source.colorAttachment,
+                    destination == null ? Vulkan.getSwapChain().getColorAttachment() : destination.colorAttachment,
+                    srcX0, srcY0, srcX1, srcY1, dstX0, dstY0, dstX1, dstY1, filter);
+        if ((mask & GL11.GL_DEPTH_BUFFER_BIT) != 0)
+            ImageUtil.blitImage(source == null ? Vulkan.getSwapChain().getDepthAttachment() : source.depthAttachment,
+                    destination == null ? Vulkan.getSwapChain().getDepthAttachment() : destination.depthAttachment,
+                    srcX0, srcY0, srcX1, srcY1, dstX0, dstY0, dstX1, dstY1, GL11.GL_NEAREST);
     }
 
     public static GlFramebuffer getBoundFramebuffer() {
@@ -211,6 +245,9 @@ public class GlFramebuffer {
             this.cleanUp();
         }
 
+        if (depthAttachment != null && (colorAttachment.width != depthAttachment.width || colorAttachment.height != depthAttachment.height))
+            return;
+
         boolean hasDepthImage = this.depthAttachment != null;
         VulkanImage depthImage = this.depthAttachment;
 
@@ -238,6 +275,7 @@ public class GlFramebuffer {
     }
 
     void cleanUp() {
+        if (this.framebuffer == null) return;
         this.framebuffer.cleanUp(false);
         this.renderPass.cleanUp();
 

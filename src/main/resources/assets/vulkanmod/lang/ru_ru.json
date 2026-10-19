@@ -1,0 +1,15 @@
+{
+  "vulkanmod.options.builderThreads": "Потоки сборки чанков",
+  "vulkanmod.options.builderThreads.auto": "Автоматически",
+  "vulkanmod.options.textureAnimations": "Анимация текстур",
+  "vulkanmod.options.backfaceCulling": "Отсечение обратных граней на CPU",
+  "vulkanmod.options.backfaceCulling.tooltip": "Не рисовать грани ландшафта, направленные от камеры.",
+  "vulkanmod.options.buttons.update_available": "Доступно обновление порта",
+  "vulkanmod.options.windowMode": "Режим окна",
+  "vulkanmod.options.windowMode.windowed": "Оконный",
+  "vulkanmod.options.windowMode.windowedFullscreen": "На весь экран без рамки",
+  "vulkanmod.options.cloudDistance": "Дальность облаков",
+  "vulkanmod.options.inactivityLimit": "Снижать FPS",
+  "vulkanmod.options.inactivityLimit.minimized": "При сворачивании",
+  "vulkanmod.options.inactivityLimit.afk": "При бездействии"
+}

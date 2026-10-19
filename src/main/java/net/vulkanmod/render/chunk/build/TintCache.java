@@ -1,120 +1,161 @@
 package net.vulkanmod.render.chunk.build;
 
-import net.minecraft.client.Minecraft;
+import it.unimi.dsi.fastutil.objects.Reference2ReferenceOpenHashMap;
 import net.minecraft.client.renderer.BiomeColors;
 import net.minecraft.core.BlockPos;
-import net.minecraft.util.Mth;
 import net.minecraft.world.level.ColorResolver;
-import net.minecraft.world.level.Level;
 import net.minecraft.world.level.biome.Biome;
-import net.vulkanmod.render.chunk.WorldRenderer;
 import net.vulkanmod.render.chunk.build.biome.BoxBlur;
-
-import java.util.Arrays;
-import java.util.function.BiFunction;
+import java.util.function.Function;
 
 public class TintCache {
     private static final int SECTION_WIDTH = 16;
+    private static final int BOUNDARY_WIDTH = 16;
+    private static final int LAYER_COUNT = SECTION_WIDTH + (BOUNDARY_WIDTH * 2);
 
-    private final Layer[] layers = new Layer[SECTION_WIDTH];
+    private final Reference2ReferenceOpenHashMap<ColorResolver, Layer[]> layers;
 
+    private Function<BlockPos, Biome> biomeGetter;
     private int blendRadius, totalWidth;
     private int secX, secY, secZ;
-    private int minX, minZ;
-    private int maxX, maxZ;
+    private int minX, minY, minZ;
+    private int maxX, maxY, maxZ;
 
     private int dataSize;
     private int[] temp;
 
     public TintCache() {
-        Arrays.fill(layers, new Layer());
+        this.layers = new Reference2ReferenceOpenHashMap<>();
+
+        // Default resolvers
+        this.layers.put(BiomeColors.FOLIAGE_COLOR_RESOLVER, allocateLayers());
+        this.layers.put(BiomeColors.GRASS_COLOR_RESOLVER, allocateLayers());
+        this.layers.put(BiomeColors.WATER_COLOR_RESOLVER, allocateLayers());
     }
 
-    public void init(int blendRadius, int secX, int secY, int secZ) {
-        this.blendRadius = Minecraft.getInstance().options.biomeBlendRadius().get();
+    public void init(Function<BlockPos, Biome> biomeGetter, int blendRadius, int secX, int secY, int secZ) {
+        this.biomeGetter = biomeGetter;
+        this.blendRadius = blendRadius;
         this.totalWidth = (blendRadius * 2) + 16;
 
         this.secX = secX;
         this.secY = secY;
         this.secZ = secZ;
 
-        minX = (secX << 4) - blendRadius;
-        minZ = (secZ << 4) - blendRadius;
-        maxX = (secX << 4) + 16 + blendRadius;
-        maxZ = (secZ << 4) + 16 + blendRadius;
+        this.minX = (secX << 4) - blendRadius;
+        this.minZ = (secZ << 4) - blendRadius;
+        this.maxX = (secX << 4) + 15 + blendRadius;
+        this.maxZ = (secZ << 4) + 15 + blendRadius;
+
+        this.minY = (secY << 4) - 2;
+        this.maxY = this.minY + 15 + 4;
 
         int size = totalWidth * totalWidth;
 
-        if(size != dataSize) {
+        if (size != this.dataSize) {
             this.dataSize = size;
-            for (Layer layer : layers) {
-                layer.allocate(size);
+
+            for (Layer[] layers : layers.values()) {
+                for (Layer layer : layers) {
+                    layer.allocate(size);
+                }
             }
-            temp = new int[size];
-        } else {
-            for (Layer layer : layers) {
-                layer.invalidate();
+
+            this.temp = new int[size];
+        }
+        else {
+            for (Layer[] layers : layers.values()) {
+                for (Layer layer : layers) {
+                    layer.invalidate();
+                }
             }
         }
     }
 
     public int getColor(BlockPos blockPos, ColorResolver colorResolver) {
-        int relY = blockPos.getY() & 15;
-        Layer layer = layers[relY];
-        if(layer.invalidated)
-            calculateLayer(relY);
+        int relY = blockPos.getY() - this.minY;
 
-        int[] values = layer.getValues(colorResolver);
-        int relX = blockPos.getX() & 15;
-        int relZ = blockPos.getZ() & 15;
-        int idx = totalWidth * (relZ + blendRadius) + (relX + blendRadius);
+        if (!this.layers.containsKey(colorResolver)) {
+            addResolver(colorResolver);
+        }
+
+        Layer layer = this.layers.get(colorResolver)[relY];
+
+        if (layer.invalidated) {
+            calculateLayer(layer, colorResolver, relY);
+        }
+
+        int[] values = layer.getValues();
+
+        int relX = blockPos.getX() - this.minX;
+        int relZ = blockPos.getZ() - this.minZ;
+
+        int idx = this.totalWidth * (relZ) + (relX);
         return values[idx];
     }
 
-    public void calculateLayer(int y) {
-        Level level = WorldRenderer.getLevel();
-        Layer layer = layers[y];
+    private void addResolver(ColorResolver colorResolver) {
+        Layer[] layers1 = allocateLayers();
 
-        BlockPos.MutableBlockPos blockPos = new BlockPos.MutableBlockPos();
-        int absY = (secY << 4) + y;
+        for (Layer layer : layers1) {
+            layer.allocate(this.dataSize);
+        }
 
-        Biome tB = level.getBiome(blockPos.set(minX, absY, minZ)).value();
-        boolean mixed = false;
-        for (int absZ = minZ; absZ < maxZ ; absZ++) {
-            for (int absX = minX; absX < maxX ; absX++) {
-                blockPos.set(absX, absY, absZ);
-                Biome biome = level.getBiome(blockPos).value();
+        this.layers.put(colorResolver, layers1);
+    }
 
-                if (biome != tB)
-                    mixed = true;
+    private Layer[] allocateLayers() {
+        Layer[] layers = new Layer[LAYER_COUNT];
+
+        for (int i = 0; i < LAYER_COUNT; i++) {
+            layers[i] = new Layer();
+        }
+
+        return layers;
+    }
+
+    private void calculateLayer(Layer layer, ColorResolver colorResolver, int y) {
+        int absY = minY + y;
+
+        int[] values = layer.values;
+        BlockPos.MutableBlockPos position = new BlockPos.MutableBlockPos();
+
+        for (int absZ = minZ; absZ <= maxZ; absZ++) {
+            for (int absX = minX; absX <= maxX; absX++) {
+                Biome biome = this.biomeGetter.apply(position.set(absX, absY, absZ));
 
                 final int idx = (absX - minX) + (absZ - minZ) * totalWidth;
-                layer.grass[idx] = biome.getGrassColor(absX, absZ);
-                layer.foliage[idx] = biome.getFoliageColor();
-                layer.water[idx] = biome.getWaterColor();
+                values[idx] = colorResolver.getColor(biome, absX, absZ);
             }
         }
 
-        if(mixed && blendRadius > 0) {
-            BoxBlur.blur(layer.grass, temp, SECTION_WIDTH, blendRadius);
-            BoxBlur.blur(layer.foliage, temp, SECTION_WIDTH, blendRadius);
-            BoxBlur.blur(layer.water, temp, SECTION_WIDTH, blendRadius);
+        if (blendRadius > 0) {
+            this.applyBlur(values);
         }
 
         layer.invalidated = false;
     }
 
+    private void applyBlur(int[] buffer) {
+        int value = buffer[0];
+        boolean needsBlur = false;
+        for (int i = 1; i < buffer.length; ++i) {
+            if (value != buffer[i]) {
+                needsBlur = true;
+                break;
+            }
+        }
+
+        if (needsBlur)
+            BoxBlur.blur(buffer, temp, SECTION_WIDTH, blendRadius);
+    }
+
     static class Layer {
         private boolean invalidated = true;
-
-        private int[] grass;
-        private int[] foliage;
-        private int[] water;
+        private int[] values;
 
         void allocate(int size) {
-            grass = new int[size];
-            foliage = new int[size];
-            water = new int[size];
+            this.values = new int[size];
             invalidate();
         }
 
@@ -122,15 +163,8 @@ public class TintCache {
             this.invalidated = true;
         }
 
-        public int[] getValues(ColorResolver colorResolver) {
-            if(colorResolver == BiomeColors.GRASS_COLOR_RESOLVER)
-                return grass;
-            else if(colorResolver == BiomeColors.FOLIAGE_COLOR_RESOLVER)
-                return foliage;
-            else if(colorResolver == BiomeColors.WATER_COLOR_RESOLVER)
-                return water;
-
-            throw new IllegalArgumentException("Unexpected resolver: " + colorResolver.toString());
+        public int[] getValues() {
+            return this.values;
         }
     }
 }

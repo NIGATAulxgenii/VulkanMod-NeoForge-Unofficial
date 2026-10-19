@@ -57,7 +57,7 @@ source code and build files accompany each release.
 
 ## Release files and checks
 
-Upload the main `VulkanMod-1.21.1-NeoForge-0.4.8-neoforge.4.jar` as the mod.
+Upload the main `VulkanMod-1.21.1-NeoForge-0.4.8-neoforge.7-dev.jar` as the mod.
 The `-sources.jar` is an optional source attachment, not an installable mod.
 Keep the full `-source.zip` available alongside the binary: it includes the
 Gradle wrapper, build configuration, source, resources and license notices.

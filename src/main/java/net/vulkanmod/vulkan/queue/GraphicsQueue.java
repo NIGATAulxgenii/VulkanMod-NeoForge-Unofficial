@@ -13,19 +13,27 @@ public class GraphicsQueue extends Queue {
     public static GraphicsQueue INSTANCE;
 
     private static CommandPool.CommandBuffer currentCmdBuffer;
+    private boolean recordingSession;
 
     public GraphicsQueue(MemoryStack stack, int familyIndex) {
         super(stack, familyIndex);
     }
 
     public void startRecording() {
+        flushPending();
+        recordingSession = true;
         currentCmdBuffer = beginCommands();
     }
 
     public void endRecordingAndSubmit() {
-        long fence = submitCommands(currentCmdBuffer);
-        Synchronization.INSTANCE.addCommandBuffer(currentCmdBuffer);
+        flushPending();
+        recordingSession = false;
+    }
 
+    public void flushPending() {
+        if (currentCmdBuffer == null) return;
+        submitCommands(currentCmdBuffer, true);
+        Synchronization.INSTANCE.addCommandBuffer(currentCmdBuffer, true);
         currentCmdBuffer = null;
     }
 
@@ -33,15 +41,17 @@ public class GraphicsQueue extends Queue {
         if (currentCmdBuffer != null) {
             return currentCmdBuffer;
         } else {
-            return beginCommands();
+            CommandPool.CommandBuffer commands = beginCommands();
+            if (recordingSession) currentCmdBuffer = commands;
+            return commands;
         }
     }
 
     public long endIfNeeded(CommandPool.CommandBuffer commandBuffer) {
-        if (currentCmdBuffer != null) {
+        if (recordingSession) {
             return VK_NULL_HANDLE;
         } else {
-            return submitCommands(commandBuffer);
+            return submitCommands(commandBuffer, true);
         }
     }
 

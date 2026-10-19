@@ -28,7 +28,7 @@ public abstract class GlUtil {
         int outSize = in.remaining() * 4 / 3;
         ByteBuffer out = MemoryUtil.memAlloc(outSize);
 
-        int j = 0;
+        int j = in.position();
         for (int i = 0; i < outSize; i+=4, j+=3) {
             out.put(i, in.get(j));
             out.put(i + 1, in.get(j + 1));
@@ -47,13 +47,13 @@ public abstract class GlUtil {
 
         long ptr = MemoryUtil.memAddress0(out);
 
-        long srcPtr = MemoryUtil.memAddress0(in);
+        long srcPtr = MemoryUtil.memAddress(in);
 
         // TODO write in place (don't free the returned buffer in that case)
         for (int i = 0; i < outSize ; i += 4) {
             int color = MemoryUtil.memGetInt(srcPtr + i);
 
-            color = (color << 24) & 0xFF000000 | (color >> 8) & 0xFFFFFF;
+            color = (color & 0xFF00FF00) | ((color >>> 16) & 0xFF) | ((color & 0xFF) << 16);
 
             MemoryUtil.memPutInt(ptr + i, color);
         }
@@ -63,7 +63,7 @@ public abstract class GlUtil {
 
     public static int vulkanFormat(int glFormat, int type) {
         return switch (glFormat) {
-            case GL11.GL_RGBA, GL30.GL_RGBA8 ->
+            case GL11.GL_RGB, GL30.GL_RGB8, GL11.GL_RGBA, GL30.GL_RGBA8 ->
                     switch (type) {
                         case GL11.GL_UNSIGNED_BYTE -> VK_FORMAT_R8G8B8A8_UNORM;
                         case GL11.GL_BYTE -> VK_FORMAT_R8G8B8A8_UNORM;

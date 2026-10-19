@@ -235,7 +235,7 @@ public class WorldRenderer {
             this.level.clearTintCaches();
 
             this.renderRegionCache.clear();
-            this.taskDispatcher.createThreads();
+            this.taskDispatcher.createThreads(Initializer.CONFIG.builderThreads);
 
             this.graphNeedsUpdate = true;
 //            this.generateClouds = true;
@@ -338,9 +338,9 @@ public class WorldRenderer {
                     renderer.uploadAndBindUBOs(pipeline);
 
                     if (indirectDraw)
-                        drawBuffers.buildDrawBatchesIndirect(indirectBuffers[currentFrame], queue, terrainRenderType);
+                        drawBuffers.buildDrawBatchesIndirect(this.cameraPos, indirectBuffers[currentFrame], queue, terrainRenderType);
                     else
-                        drawBuffers.buildDrawBatchesDirect(queue, terrainRenderType);
+                        drawBuffers.buildDrawBatchesDirect(this.cameraPos, queue, terrainRenderType);
                 }
             }
         }
@@ -463,7 +463,7 @@ public class WorldRenderer {
     }
 
     public String getChunkStatistics() {
-        return this.sectionGraph.getStatistics();
+        return this.sectionGraph == null ? null : this.sectionGraph.getStatistics();
     }
 
     public void cleanUp() {

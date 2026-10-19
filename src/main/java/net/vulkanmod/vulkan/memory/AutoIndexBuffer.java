@@ -25,22 +25,18 @@ public class AutoIndexBuffer {
         this.vertexCount = vertexCount;
         ByteBuffer buffer;
 
-        IndexBuffer.IndexType indexType = IndexBuffer.IndexType.SHORT;
-
-        switch (this.drawType) {
-            case QUADS -> {
-                if (vertexCount <= QUAD_U16_MAX_VERTEX_COUNT)
-                    buffer = genQuadIndices(vertexCount);
-                else {
-                    indexType = IndexBuffer.IndexType.INT;
-                    buffer = genIntQuadIndices(vertexCount);
-                }
-            }
-            case TRIANGLE_FAN -> buffer = genTriangleFanIndices(vertexCount);
-            case TRIANGLE_STRIP -> buffer = genTriangleStripIndices(vertexCount);
-            case LINES -> buffer = genLinesIndices(vertexCount);
-            case DEBUG_LINE_STRIP -> buffer = genDebugLineStripIndices(vertexCount);
-            default -> throw new IllegalArgumentException("Unsupported drawType: %s".formatted(this.drawType));
+        IndexBuffer.IndexType indexType = vertexCount > 65536 ? IndexBuffer.IndexType.INT : IndexBuffer.IndexType.SHORT;
+        if (indexType == IndexBuffer.IndexType.INT) {
+            buffer = genIntIndices(vertexCount, this.drawType);
+        } else {
+            buffer = switch (this.drawType) {
+                case QUADS -> genQuadIndices(vertexCount);
+                case TRIANGLE_FAN -> genTriangleFanIndices(vertexCount);
+                case TRIANGLE_STRIP -> genTriangleStripIndices(vertexCount);
+                case LINES -> genLinesIndices(vertexCount);
+                case DEBUG_LINE_STRIP -> genDebugLineStripIndices(vertexCount);
+                default -> throw new IllegalArgumentException("Unsupported drawType: " + this.drawType);
+            };
         }
 
         int size = buffer.capacity();
@@ -58,6 +54,32 @@ public class AutoIndexBuffer {
             this.indexBuffer.freeBuffer();
             createIndexBuffer(newVertexCount);
         }
+    }
+
+    public static ByteBuffer genIntIndices(int vertexCount, DrawType type) {
+        int count = switch (type) {
+            case QUADS, LINES -> roundUpToDivisible(vertexCount * 3 / 2, 6);
+            case TRIANGLE_FAN, TRIANGLE_STRIP -> (vertexCount - 2) * 3;
+            case DEBUG_LINE_STRIP -> (vertexCount - 1) * 2;
+            default -> throw new IllegalArgumentException("Unsupported drawType: " + type);
+        };
+        ByteBuffer buffer = MemoryUtil.memAlloc(count * Integer.BYTES);
+        IntBuffer indices = buffer.asIntBuffer();
+        if (type == DrawType.QUADS || type == DrawType.LINES) {
+            for (int i = 0; i < vertexCount; i += 4) {
+                indices.put(i).put(i + 1).put(i + 2);
+                if (type == DrawType.QUADS) indices.put(i).put(i + 2).put(i + 3);
+                else indices.put(i + 3).put(i + 2).put(i + 1);
+            }
+        } else if (type == DrawType.DEBUG_LINE_STRIP) {
+            for (int i = 0; i < vertexCount - 1; i++) indices.put(i).put(i + 1);
+        } else {
+            for (int i = 0; i < vertexCount - 2; i++) {
+                if (type == DrawType.TRIANGLE_FAN) indices.put(0).put(i + 1).put(i + 2);
+                else indices.put(i).put(i + 1).put(i + 2);
+            }
+        }
+        return buffer;
     }
 
     public static ByteBuffer genQuadIndices(int vertexCount) {

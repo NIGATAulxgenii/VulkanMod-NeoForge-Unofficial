@@ -27,6 +27,7 @@ public class VBO {
     private VertexFormat.Mode mode;
 
     private boolean autoIndexed = false;
+    private AutoIndexBuffer automaticIndexBuffer;
 
     public VBO() {}
 
@@ -39,6 +40,7 @@ public class VBO {
 
         this.uploadVertexBuffer(parameters, meshData.vertexBuffer());
         this.uploadIndexBuffer(meshData.indexBuffer());
+        if (!this.autoIndexed) this.indexBuffer.indexType = parameters.indexType() == VertexFormat.IndexType.SHORT ? IndexBuffer.IndexType.SHORT : IndexBuffer.IndexType.INT;
 
         meshData.close();
     }
@@ -55,6 +57,7 @@ public class VBO {
 
     public void uploadIndexBuffer(ByteBuffer data) {
         if (data == null) {
+            this.automaticIndexBuffer = null;
 
             AutoIndexBuffer autoIndexBuffer;
             switch (this.mode) {
@@ -86,15 +89,16 @@ public class VBO {
 
             if (autoIndexBuffer != null) {
                 autoIndexBuffer.checkCapacity(this.vertexCount);
+                this.automaticIndexBuffer = autoIndexBuffer;
                 this.indexBuffer = autoIndexBuffer.getIndexBuffer();
             }
 
             this.autoIndexed = true;
 
         } else {
-            if (this.indexBuffer != null)
-                this.indexBuffer.freeBuffer();
-
+            if (this.indexBuffer != null && !this.autoIndexed) this.indexBuffer.freeBuffer();
+            this.autoIndexed = false;
+            this.automaticIndexBuffer = null;
             this.indexBuffer = new IndexBuffer(data.remaining(), MemoryTypes.GPU_MEM);
             this.indexBuffer.copyBuffer(data);
         }
@@ -104,6 +108,7 @@ public class VBO {
     public void drawWithShader(Matrix4f MV, Matrix4f P, ShaderInstance shader) {
         if (this.indexCount != 0) {
             RenderSystem.assertOnRenderThread();
+            if (this.automaticIndexBuffer != null) this.indexBuffer = this.automaticIndexBuffer.getIndexBuffer();
 
             RenderSystem.setShader(() -> shader);
 
@@ -115,6 +120,7 @@ public class VBO {
     public void drawWithShader(Matrix4f MV, Matrix4f P, GraphicsPipeline pipeline) {
         if (this.indexCount != 0) {
             RenderSystem.assertOnRenderThread();
+            if (this.automaticIndexBuffer != null) this.indexBuffer = this.automaticIndexBuffer.getIndexBuffer();
 
             VRenderSystem.applyMVP(MV, P);
 
@@ -138,6 +144,7 @@ public class VBO {
     public void draw() {
         if (this.indexCount != 0) {
             RenderSystem.assertOnRenderThread();
+            if (this.automaticIndexBuffer != null) this.indexBuffer = this.automaticIndexBuffer.getIndexBuffer();
 
             Renderer renderer = Renderer.getInstance();
             Pipeline pipeline = renderer.getBoundPipeline();

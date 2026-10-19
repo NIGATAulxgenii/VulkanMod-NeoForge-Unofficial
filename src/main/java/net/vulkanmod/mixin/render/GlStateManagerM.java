@@ -161,7 +161,7 @@ public class GlStateManagerM {
      */
     @Overwrite(remap = false)
     public static void _texSubImage2D(int target, int level, int offsetX, int offsetY, int width, int height, int format, int type, long pixels) {
-
+        GlTexture.texSubImage2D(target, level, offsetX, offsetY, width, height, format, type, pixels);
     }
 
     /**
@@ -201,7 +201,20 @@ public class GlStateManagerM {
      */
     @Overwrite(remap = false)
     public static void _pixelStore(int pname, int param) {
-        //Used during upload to set copy offsets
+        GlTexture.pixelStoreI(pname, param);
+    }
+
+    /** @author NeoForge port @reason Route texture readback around bootstrap OpenGL. */
+    @Overwrite(remap = false)
+    public static void _getTexImage(int target, int level, int format, int type, long pixels) {
+        GlTexture.getTexImage(target, level, format, type, pixels);
+    }
+
+    /** @author NeoForge port @reason Translate framebuffer copies without an OpenGL context. */
+    @Overwrite(remap = false)
+    public static void _glBlitFrameBuffer(int srcX0, int srcY0, int srcX1, int srcY1,
+                                         int dstX0, int dstY0, int dstX1, int dstY1, int mask, int filter) {
+        GlFramebuffer.blitFramebuffer(srcX0, srcY0, srcX1, srcY1, dstX0, dstY0, dstX1, dstY1, mask, filter);
     }
 
     /**

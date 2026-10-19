@@ -9,6 +9,7 @@ import net.vulkanmod.render.chunk.util.Util;
 import org.joml.Vector3i;
 
 public class ChunkAreaManager {
+    public static final int AREA_SIZE = 512;
     public static final int WIDTH = 8;
     public static final int HEIGHT = 8;
 
@@ -28,6 +29,10 @@ public class ChunkAreaManager {
 
     int prevX;
     int prevZ;
+
+    private final CircularIntList xList;
+    private final CircularIntList zList;
+    private final CircularIntList.RangeIterator xComplIterator;
 
     public ChunkAreaManager(int width, int height, int minHeight) {
         this.minHeight = minHeight;
@@ -59,6 +64,9 @@ public class ChunkAreaManager {
 
         this.prevX = Integer.MIN_VALUE;
         this.prevZ = Integer.MIN_VALUE;
+        this.xList = new CircularIntList(this.xzSize);
+        this.zList = new CircularIntList(this.xzSize);
+        this.xComplIterator = this.xList.createRangeIterator();
     }
 
     public void repositionAreas(int secX, int secZ) {
@@ -73,8 +81,10 @@ public class ChunkAreaManager {
         int zAbsChunkIndex = zS - this.xzSize / 2;
         int zStart = Math.floorMod(zAbsChunkIndex, this.xzSize);
 
-        CircularIntList xList = new CircularIntList(this.xzSize, xStart);
-        CircularIntList zList = new CircularIntList(this.xzSize, zStart);
+        CircularIntList xList = this.xList;
+        CircularIntList zList = this.zList;
+        xList.updateStartIdx(xStart);
+        zList.updateStartIdx(zStart);
         CircularIntList.OwnIterator xIterator = xList.iterator();
         CircularIntList.OwnIterator zIterator = zList.iterator();
 
@@ -104,9 +114,10 @@ public class ChunkAreaManager {
             zRangeEnd = -deltaZ - 1;
         }
 
-        CircularIntList.RangeIterator xRangeIterator = xList.rangeIterator(xRangeStart, xRangeEnd);
-        CircularIntList.RangeIterator xComplIterator = xList.rangeIterator(xComplStart, xComplEnd);
-        CircularIntList.RangeIterator zRangeIterator = zList.rangeIterator(zRangeStart, zRangeEnd);
+        CircularIntList.RangeIterator xRangeIterator = xList.getRangeIterator(xRangeStart, xRangeEnd);
+        CircularIntList.RangeIterator xComplIterator = this.xComplIterator;
+        xComplIterator.update(xComplStart, xComplEnd);
+        CircularIntList.RangeIterator zRangeIterator = zList.getRangeIterator(zRangeStart, zRangeEnd);
 
         xAbsChunkIndex = xS - this.xzSize / 2 + xRangeStart;
         for (int xRelativeIndex; xRangeIterator.hasNext(); xAbsChunkIndex++) {
@@ -197,7 +208,7 @@ public class ChunkAreaManager {
 
     public void releaseAllBuffers() {
         for (ChunkArea chunkArea : this.chunkAreasArr) {
-            chunkArea.releaseBuffers();
+            chunkArea.getDrawBuffers().free();
         }
     }
 

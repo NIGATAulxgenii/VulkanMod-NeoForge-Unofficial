@@ -8,6 +8,7 @@ import net.neoforged.neoforge.client.gui.IConfigScreenFactory;
 import net.minecraft.network.chat.Component;
 import net.vulkanmod.config.gui.VOptionScreen;
 import net.vulkanmod.config.Config;
+import net.vulkanmod.config.UpdateChecker;
 import net.vulkanmod.config.Platform;
 import net.vulkanmod.config.video.VideoModeManager;
 import org.apache.logging.log4j.LogManager;
@@ -24,6 +25,7 @@ public class Initializer {
 
 	public Initializer(ModContainer container) {
 		VERSION = container.getModInfo().getVersion().toString();
+		UpdateChecker.checkForUpdates(VERSION);
 		LOGGER.info("== VulkanMod {} / NeoForge ==", VERSION);
 		container.registerExtensionPoint(IConfigScreenFactory.class,
 				(IConfigScreenFactory) (mod, parent) -> new VOptionScreen(Component.translatable("options.video"), parent));

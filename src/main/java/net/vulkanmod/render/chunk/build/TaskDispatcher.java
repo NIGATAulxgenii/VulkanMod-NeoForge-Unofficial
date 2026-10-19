@@ -39,6 +39,8 @@ public class TaskDispatcher {
     }
 
     public void createThreads(int n) {
+        int maximum = Math.max(Runtime.getRuntime().availableProcessors() - 1, 1);
+        n = n <= 0 ? Math.max(maximum / 2, 1) : Math.min(n, maximum);
         if(!this.stopThreads) {
             this.stopThreads();
         }
@@ -47,7 +49,7 @@ public class TaskDispatcher {
 
         if(this.resources != null) {
             for (BuilderResources resources : this.resources) {
-                resources.clear();
+                resources.free();
             }
         }
 
@@ -68,21 +70,22 @@ public class TaskDispatcher {
 
     private void runTaskThread(BuilderResources builderResources) {
         while(!this.stopThreads) {
-            ChunkTask task = this.pollTask();
-
-            if(task == null)
-                synchronized (this) {
+            ChunkTask task;
+            synchronized (this) {
+                task = this.pollTask();
+                while (task == null && !this.stopThreads) {
                     try {
                         this.idleThreads++;
                         this.wait();
                     } catch (InterruptedException e) {
                         throw new RuntimeException(e);
+                    } finally {
+                        this.idleThreads--;
                     }
-                    this.idleThreads--;
+                    task = this.pollTask();
                 }
-
-            if(task == null)
-                continue;
+            }
+            if (task == null) break;
 
             task.runTask(builderResources);
         }
@@ -155,8 +158,10 @@ public class TaskDispatcher {
 
         // Check if area has been dismissed before uploading
         ChunkAreaManager chunkAreaManager = WorldRenderer.getInstance().getChunkAreaManager();
-        if (chunkAreaManager.getChunkArea(renderArea.index) != renderArea)
+        if (chunkAreaManager.getChunkArea(renderArea.index) != renderArea) {
+            compileResult.renderedLayers.values().forEach(UploadBuffer::release);
             return;
+        }
 
         if(compileResult.fullUpdate) {
             var renderLayers = compileResult.renderedLayers;
@@ -166,7 +171,7 @@ public class TaskDispatcher {
                 if(uploadBuffer != null) {
                     drawBuffers.upload(section, uploadBuffer, renderType);
                 } else {
-                    section.getDrawParameters(renderType).reset(renderArea, renderType);
+                    section.resetDrawParameters(renderType);
                 }
             }
 

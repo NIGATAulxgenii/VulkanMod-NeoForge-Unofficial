@@ -42,7 +42,13 @@ public class GlRenderbuffer {
     }
 
     public static void deleteRenderbuffer(int i) {
-        map.remove(i);
+        GlRenderbuffer removed = map.remove(i);
+        if (removed == null) return;
+        if (removed.vulkanImage != null) removed.vulkanImage.free();
+        if (bound == removed) {
+            bound = null;
+            boundId = 0;
+        }
     }
 
     public static GlRenderbuffer getRenderbuffer(int id) {

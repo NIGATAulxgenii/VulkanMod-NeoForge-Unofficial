@@ -11,6 +11,9 @@ java {
     withSourcesJar()
 }
 sourceSets {
+    test {
+        compileClasspath += sourceSets.main.compileClasspath
+    }
     smoke {
         compileClasspath += sourceSets.main.output
         compileClasspath += sourceSets.main.compileClasspath
@@ -42,6 +45,12 @@ neoForge {
             sourceSet = sourceSets.smoke
             loadedMods = [mods.vulkansmoke]
             gameDirectory = project.file('run-packaged-smoke')
+            if (providers.gradleProperty('smokeJar').isPresent()) jvmArgument '-Dvulkanmod.smokeBaseline=true'
+            if (providers.gradleProperty('smokeBenchmarkOnly').isPresent()) jvmArgument '-Dvulkanmod.benchmarkOnly=true'
+            if (providers.gradleProperty('smokeBenchmark').isPresent()) {
+                jvmArgument '-Dvulkanmod.benchmark=true'
+                jvmArgument "-Dvulkanmod.benchmarkLabel=${providers.gradleProperty('smokeBenchmark').get()}"
+            }
             jvmArgument '-Xmx3G'
             if (providers.gradleProperty('smokeWorld').isPresent()) {
                 jvmArgument "-Dvulkanmod.smokeWorld=${providers.gradleProperty('smokeWorld').get()}"
@@ -75,9 +84,14 @@ dependencies {
         vulkanNatives "org.lwjgl:lwjgl-vulkan:${lwjglVersion}:${platform}"
         developmentRuntime("org.lwjgl:lwjgl-vulkan:${lwjglVersion}:${platform}")
     }
+    def osName = System.getProperty('os.name')
+    def platform = osName.startsWith('Windows') ? 'windows' : osName.startsWith('Mac') ? 'macos' : 'linux'
+    def architecture = System.getProperty('os.arch') in ['aarch64', 'arm64'] ? '-arm64' : ''
+    testRuntimeOnly "org.lwjgl:lwjgl:${lwjglVersion}:natives-${platform}${architecture}"
 }
 def stagePackagedSmoke = tasks.register('stagePackagedSmoke', Sync) {
-    from(tasks.named('jar'))
+    dependsOn tasks.named('jar')
+    from(providers.gradleProperty('smokeJar').map { file(it) }.orElse(tasks.named('jar').flatMap { it.archiveFile }.map { it.asFile }))
     into('run-packaged-smoke/mods')
 }
 neoForge.runs.clientPackagedSmoke.taskBefore(stagePackagedSmoke)
@@ -118,6 +132,33 @@ tasks.register('shaderCompileCheck', JavaExec) {
     args file('src/main/resources/assets/vulkanmod/shaders').absolutePath
 }
 
-tasks.named('check') { dependsOn 'shaderCompileCheck' }
+tasks.register('streamedIndexCheck', JavaExec) {
+    dependsOn 'testClasses'
+    classpath = sourceSets.test.runtimeClasspath + sourceSets.main.compileClasspath
+    mainClass = 'net.vulkanmod.vulkan.memory.StreamedIndexCheck'
+}
+
+tasks.register('updateCheckerCheck', JavaExec) {
+    dependsOn 'testClasses'
+    classpath = sourceSets.test.runtimeClasspath + sourceSets.main.compileClasspath
+    mainClass = 'net.vulkanmod.config.UpdateCheckerCheck'
+}
+
+tasks.named('check') { dependsOn 'shaderCompileCheck', 'streamedIndexCheck', 'updateCheckerCheck' }
+
+['inactivityLimitCheck': 'net.vulkanmod.config.InactivityLimitCheck',
+ 'circularGridCheck': 'net.vulkanmod.render.chunk.util.CircularIntListCheck',
+ 'pixelTransferCheck': 'net.vulkanmod.gl.PixelTransferCheck',
+ 'terrainLayoutCheck': 'net.vulkanmod.render.vertex.TerrainLayoutCheck',
+ 'terrainGeometryCheck': 'net.vulkanmod.render.chunk.buffer.TerrainGeometryCheck',
+ 'tintCacheCheck': 'net.vulkanmod.render.chunk.build.TintCacheCheck',
+ 'cloudGridCheck': 'net.vulkanmod.render.sky.CloudGridCheck'].each { taskName, entryPoint ->
+    tasks.register(taskName, JavaExec) {
+        dependsOn 'testClasses'
+        classpath = sourceSets.test.runtimeClasspath + sourceSets.main.compileClasspath
+        mainClass = entryPoint
+    }
+    tasks.named('check') { dependsOn taskName }
+}
 
 publishing { publications { mavenJava(MavenPublication) { from components.java } } }

@@ -32,6 +32,18 @@ public class IndexBuffer extends Buffer {
         }
     }
 
+    public void copyBuffer(ByteBuffer buffer, IndexType indexType) {
+        int size = buffer.remaining();
+        this.usedBytes = (this.usedBytes + indexType.size - 1) & -indexType.size;
+        if (size > this.bufferSize - this.usedBytes) {
+            this.freeBuffer();
+            this.createBuffer((this.bufferSize + size) * 2);
+            this.reset();
+        }
+        this.indexType = indexType;
+        this.copyBuffer(buffer.slice());
+    }
+
     public enum IndexType {
         SHORT(2, VK_INDEX_TYPE_UINT16),
         INT(4, VK_INDEX_TYPE_UINT32);

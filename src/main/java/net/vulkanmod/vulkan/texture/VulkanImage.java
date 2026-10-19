@@ -94,7 +94,7 @@ public class VulkanImage {
     public static VulkanImage createDepthImage(int format, int width, int height, int usage, boolean blur, boolean clamp) {
         VulkanImage image = VulkanImage.builder(width, height)
                 .setFormat(format)
-                .setUsage(usage)
+                .setUsage(usage | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT)
                 .setLinearFiltering(blur)
                 .setClamp(clamp)
                 .createVulkanImage();
@@ -192,7 +192,7 @@ public class VulkanImage {
     }
 
     public void uploadSubTextureAsync(int mipLevel, int width, int height, int xOffset, int yOffset, int unpackSkipRows, int unpackSkipPixels, int unpackRowLength, ByteBuffer buffer) {
-        long imageSize = buffer.limit();
+        long imageSize = buffer.remaining();
 
         CommandPool.CommandBuffer commandBuffer = DeviceManager.getGraphicsQueue().getCommandBuffer();
         try (MemoryStack stack = stackPush()) {
@@ -210,7 +210,7 @@ public class VulkanImage {
         long fence = DeviceManager.getGraphicsQueue().endIfNeeded(commandBuffer);
         if (fence != VK_NULL_HANDLE)
 //            Synchronization.INSTANCE.addFence(fence);
-            Synchronization.INSTANCE.addCommandBuffer(commandBuffer);
+            Synchronization.INSTANCE.addCommandBuffer(commandBuffer, true);
     }
 
     private void transferDstLayout(MemoryStack stack, VkCommandBuffer commandBuffer) {
@@ -225,8 +225,8 @@ public class VulkanImage {
         try (MemoryStack stack = MemoryStack.stackPush()) {
             readOnlyLayout(stack, commandBuffer.getHandle());
         }
-        DeviceManager.getGraphicsQueue().submitCommands(commandBuffer);
-        Synchronization.INSTANCE.addCommandBuffer(commandBuffer);
+        if (DeviceManager.getGraphicsQueue().endIfNeeded(commandBuffer) != VK_NULL_HANDLE)
+            Synchronization.INSTANCE.addCommandBuffer(commandBuffer, true);
     }
 
     public void readOnlyLayout(MemoryStack stack, VkCommandBuffer commandBuffer) {
@@ -489,23 +489,26 @@ public class VulkanImage {
             return VulkanImage.createTextureImage(this);
         }
 
-        private static int convertFormat(NativeImage.InternalGlFormat format) {
+        public static int convertFormat(NativeImage.InternalGlFormat format) {
             return switch (format) {
                 case RGBA -> VK_FORMAT_R8G8B8A8_UNORM;
+                case RGB -> VK_FORMAT_R8G8B8A8_UNORM;
+                case RG -> VK_FORMAT_R8G8_UNORM;
                 case RED -> VK_FORMAT_R8_UNORM;
-                default -> throw new IllegalArgumentException(String.format("Unxepcted format: %s", format));
             };
         }
 
         private static int formatSize(int format) {
             return switch (format) {
                 case VK_FORMAT_R8G8B8A8_UNORM, VK_FORMAT_R8G8B8A8_SRGB,
+                     VK_FORMAT_B8G8R8A8_UNORM, VK_FORMAT_B8G8R8A8_SRGB,
                      VK_FORMAT_D32_SFLOAT, VK_FORMAT_D24_UNORM_S8_UINT,
-                     VK_FORMAT_R8G8B8A8_UINT, VK_FORMAT_R8G8B8A8_SINT -> 4;
+                     VK_FORMAT_R8G8B8A8_UINT, VK_FORMAT_R8G8B8A8_SINT, VK_FORMAT_R32_SFLOAT -> 4;
+                case VK_FORMAT_R8G8B8_UNORM -> 3;
+                case VK_FORMAT_R8G8_UNORM, VK_FORMAT_R16_SFLOAT, VK_FORMAT_D16_UNORM -> 2;
                 case VK_FORMAT_R8_UNORM -> 1;
-
-//                default -> throw new IllegalArgumentException(String.format("Unxepcted format: %s", format));
-                default -> 0;
+                case VK_FORMAT_R16G16B16A16_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT -> 8;
+                default -> throw new IllegalArgumentException("Unsupported Vulkan texture format: " + format);
             };
         }
     }

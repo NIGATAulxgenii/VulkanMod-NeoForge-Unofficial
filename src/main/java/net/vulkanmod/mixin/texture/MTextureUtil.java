@@ -41,18 +41,20 @@ public class MTextureUtil {
             GlStateManager._texParameter(GL11.GL_TEXTURE_2D, GL30.GL_TEXTURE_LOD_BIAS, 0.0F);
         }
 
-        if (image == null || image.mipLevels != mipLevels || image.width != width || image.height != height) {
+        if (image == null || image.mipLevels != mipLevels + 1 || image.width != width || image.height != height
+                || image.format != VulkanImage.Builder.convertFormat(internalGlFormat)) {
             if (image != null)
                 image.free();
 
             image = new VulkanImage.Builder(width, height)
+                    .setFormat(internalGlFormat)
                     .setMipLevels(mipLevels + 1)
                     .setLinearFiltering(false)
                     .setClamp(false)
                     .createVulkanImage();
 
             glTexture.setVulkanImage(image);
-            VTextureSelector.bindTexture(image);
+            GlTexture.bindTexture(id);
         }
     }
 }

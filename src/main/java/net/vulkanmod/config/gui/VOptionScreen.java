@@ -11,6 +11,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.FormattedCharSequence;
 import net.vulkanmod.Initializer;
+import net.vulkanmod.config.UpdateChecker;
 import net.vulkanmod.config.gui.widget.VAbstractWidget;
 import net.vulkanmod.config.gui.widget.VButtonWidget;
 import net.vulkanmod.config.option.OptionPage;
@@ -193,6 +194,14 @@ public class VOptionScreen extends Screen {
         this.addWidget(this.applyButton);
         this.addWidget(this.doneButton);
         this.addWidget(this.supportButton);
+        if (UpdateChecker.isUpdateAvailable()) {
+            int updateWidth = minecraft.font.width(Component.translatable("vulkanmod.options.buttons.update_available")) + 10;
+            var update = new VButtonWidget(x0 - updateWidth - buttonMargin, 6, updateWidth, buttonHeight,
+                    Component.translatable("vulkanmod.options.buttons.update_available"),
+                    button -> Util.getPlatform().openUri(UpdateChecker.RELEASES_URL));
+            this.buttons.add(update);
+            this.addWidget(update);
+        }
     }
 
     public boolean mouseClicked(double mouseX, double mouseY, int button) {

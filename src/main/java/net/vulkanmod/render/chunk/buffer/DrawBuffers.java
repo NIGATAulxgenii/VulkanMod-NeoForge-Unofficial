@@ -1,9 +1,12 @@
 package net.vulkanmod.render.chunk.buffer;
 
+import net.minecraft.world.phys.Vec3;
+import net.vulkanmod.Initializer;
 import net.vulkanmod.render.PipelineManager;
-import net.vulkanmod.render.chunk.ChunkArea;
+import net.vulkanmod.render.chunk.ChunkAreaManager;
 import net.vulkanmod.render.chunk.RenderSection;
 import net.vulkanmod.render.chunk.build.UploadBuffer;
+import net.vulkanmod.render.chunk.cull.QuadFacing;
 import net.vulkanmod.render.chunk.util.StaticQueue;
 import net.vulkanmod.render.vertex.CustomVertexFormat;
 import net.vulkanmod.render.vertex.TerrainRenderType;
@@ -21,8 +24,15 @@ import java.util.EnumMap;
 import static org.lwjgl.vulkan.VK10.*;
 
 public class DrawBuffers {
-    private static final int VERTEX_SIZE = PipelineManager.TERRAIN_VERTEX_FORMAT.getVertexSize();
-    private static final int INDEX_SIZE = Short.BYTES;
+    public static final int VERTEX_SIZE = PipelineManager.TERRAIN_VERTEX_FORMAT.getVertexSize();
+    public static final int INDEX_SIZE = Integer.BYTES;
+    public static final int UNDEFINED_FACING_IDX = QuadFacing.UNDEFINED.ordinal();
+    public static final float POS_OFFSET = PipelineManager.TERRAIN_VERTEX_FORMAT == CustomVertexFormat.COMPRESSED_TERRAIN ? 4.0f : 0.0f;
+
+    private static final int CMD_STRIDE = 32;
+
+    private static final long cmdBufferPtr = MemoryUtil.nmemAlignedAlloc(CMD_STRIDE, (long) ChunkAreaManager.AREA_SIZE * QuadFacing.COUNT * CMD_STRIDE);
+
     private final int index;
     private final Vector3i origin;
     private final int minHeight;
@@ -31,36 +41,105 @@ public class DrawBuffers {
     AreaBuffer indexBuffer;
     private final EnumMap<TerrainRenderType, AreaBuffer> vertexBuffers = new EnumMap<>(TerrainRenderType.class);
 
-    //Need ugly minHeight Parameter to fix custom world heights (exceeding 384 Blocks in total)
+    long drawParamsPtr;
+    final int[] sectionIndices = new int[512];
+    final int[] masks = new int[512];
+
+    // Need ugly minHeight parameter to fix custom world heights (exceeding 384 Blocks in total)
     public DrawBuffers(int index, Vector3i origin, int minHeight) {
         this.index = index;
         this.origin = origin;
         this.minHeight = minHeight;
+
+        this.drawParamsPtr = DrawParametersBuffer.allocateBuffer();
     }
 
     public void upload(RenderSection section, UploadBuffer buffer, TerrainRenderType renderType) {
-        DrawParameters drawParameters = section.getDrawParameters(renderType);
-        int vertexOffset = drawParameters.vertexOffset;
-        int firstIndex = -1;
+        var vertexBuffers = buffer.getVertexBuffers();
 
-        if (!buffer.indexOnly) {
-            AreaBuffer.Segment segment = this.getAreaBufferOrAlloc(renderType).upload(buffer.getVertexBuffer(), vertexOffset, drawParameters);
-            vertexOffset = segment.offset / VERTEX_SIZE;
+        if (buffer.indexOnly) {
+            long paramsPtr = DrawParametersBuffer.getParamsPtr(this.drawParamsPtr, section.inAreaIndex, renderType.ordinal(), QuadFacing.UNDEFINED.ordinal());
 
-            drawParameters.baseInstance = encodeSectionOffset(section.xOffset(), section.yOffset(), section.zOffset());
-        }
+            int firstIndex = DrawParametersBuffer.getFirstIndex(paramsPtr);
+            int indexCount = DrawParametersBuffer.getIndexCount(paramsPtr);
 
-        if (!buffer.autoIndices) {
-            if (this.indexBuffer == null)
-                this.indexBuffer = new AreaBuffer(AreaBuffer.Usage.INDEX, 60000, INDEX_SIZE);
-
-            AreaBuffer.Segment segment = this.indexBuffer.upload(buffer.getIndexBuffer(), drawParameters.firstIndex, drawParameters);
+            int oldOffset = indexCount > 0 ? firstIndex : -1;
+            AreaBuffer.Segment segment = this.indexBuffer.upload(buffer.getIndexBuffer(), oldOffset, paramsPtr);
             firstIndex = segment.offset / INDEX_SIZE;
+
+            DrawParametersBuffer.setFirstIndex(paramsPtr, firstIndex);
+
+            buffer.release();
+            return;
         }
 
-        drawParameters.indexCount = buffer.indexCount;
-        drawParameters.firstIndex = firstIndex;
-        drawParameters.vertexOffset = vertexOffset;
+        int oldOffset = -1;
+        int size = 0;
+        for (int i = 0; i < QuadFacing.COUNT; i++) {
+            long paramPtr = DrawParametersBuffer.getParamsPtr(this.drawParamsPtr, section.inAreaIndex, renderType.ordinal(), i);
+            int vertexOffset = DrawParametersBuffer.getVertexOffset(paramPtr);
+
+            // Only need to get first used offset, as it identifies the whole segment that will be freed
+            if (oldOffset == -1) {
+                oldOffset = vertexOffset;
+            }
+
+            var vertexBuffer = vertexBuffers[i];
+            if (vertexBuffer != null) {
+                size += vertexBuffer.remaining();
+
+            }
+        }
+
+        if (size == 0) {
+            buffer.release();
+            return;
+        }
+
+        Renderer.getDrawer().getQuadsIndexBuffer().checkCapacity(size / VERTEX_SIZE);
+        AreaBuffer areaBuffer = this.getAreaBufferOrAlloc(renderType);
+        areaBuffer.freeSegment(oldOffset);
+        AreaBuffer.Segment segment = areaBuffer.allocateSegment(size);
+
+        int baseInstance = encodeSectionOffset(section.xOffset(), section.yOffset(), section.zOffset());
+
+        int offset = 0;
+        for (int i = 0; i < QuadFacing.COUNT; i++) {
+            long paramPtr = DrawParametersBuffer.getParamsPtr(this.drawParamsPtr, section.inAreaIndex, renderType.ordinal(), i);
+
+            int vertexOffset = -1;
+            int firstIndex = 0;
+            int indexCount = 0;
+
+            var vertexBuffer = vertexBuffers[i];
+            int vertexCount = 0;
+
+            if (vertexBuffer != null) {
+                areaBuffer.upload(segment, vertexBuffer, offset);
+                vertexOffset = (segment.offset + offset) / VERTEX_SIZE;
+
+                offset += vertexBuffer.remaining();
+                vertexCount = vertexBuffer.limit() / VERTEX_SIZE;
+                indexCount = vertexCount * 6 / 4;
+            }
+
+            if (i == QuadFacing.UNDEFINED.ordinal() && !buffer.autoIndices) {
+                if (this.indexBuffer == null) {
+                    this.indexBuffer = new AreaBuffer(AreaBuffer.Usage.INDEX, 60000, INDEX_SIZE);
+                }
+
+                oldOffset = DrawParametersBuffer.getIndexCount(paramPtr) > 0 ? DrawParametersBuffer.getFirstIndex(paramPtr) : -1;
+                AreaBuffer.Segment ibSegment = this.indexBuffer.upload(buffer.getIndexBuffer(), oldOffset, paramPtr);
+                firstIndex = ibSegment.offset / INDEX_SIZE;
+            } else {
+                Renderer.getDrawer().getQuadsIndexBuffer().checkCapacity(vertexCount);
+            }
+
+            DrawParametersBuffer.setIndexCount(paramPtr, indexCount);
+            DrawParametersBuffer.setFirstIndex(paramPtr, firstIndex);
+            DrawParametersBuffer.setVertexOffset(paramPtr, vertexOffset);
+            DrawParametersBuffer.setBaseInstance(paramPtr, baseInstance);
+        }
 
         buffer.release();
     }
@@ -93,9 +172,6 @@ public class DrawBuffers {
         return yOffset1 << 16 | zOffset1 << 8 | xOffset1;
     }
 
-    // TODO: refactor
-    public static final float POS_OFFSET = PipelineManager.TERRAIN_VERTEX_FORMAT == CustomVertexFormat.COMPRESSED_TERRAIN ? 4.0f : 0.0f;
-
     private void updateChunkAreaOrigin(VkCommandBuffer commandBuffer, Pipeline pipeline, double camX, double camY, double camZ, MemoryStack stack) {
         float xOffset = (float) ((this.origin.x) + POS_OFFSET - camX);
         float yOffset = (float) ((this.origin.y) + POS_OFFSET - camY);
@@ -110,73 +186,278 @@ public class DrawBuffers {
         vkCmdPushConstants(commandBuffer, pipeline.getLayout(), VK_SHADER_STAGE_VERTEX_BIT, 0, byteBuffer);
     }
 
-    public void buildDrawBatchesIndirect(IndirectBuffer indirectBuffer, StaticQueue<RenderSection> queue, TerrainRenderType terrainRenderType) {
+    public void buildDrawBatchesIndirect(Vec3 cameraPos, IndirectBuffer indirectBuffer, StaticQueue<RenderSection> queue, TerrainRenderType terrainRenderType) {
+        long bufferPtr = cmdBufferPtr;
 
-        try (MemoryStack stack = MemoryStack.stackPush()) {
+        boolean isTranslucent = terrainRenderType == TerrainRenderType.TRANSLUCENT;
+        boolean backFaceCulling = Initializer.CONFIG.backFaceCulling && !isTranslucent;
 
-            ByteBuffer byteBuffer = stack.malloc(20 * queue.size());
-            long bufferPtr = MemoryUtil.memAddress0(byteBuffer);
+        int drawCount = 0;
 
-            boolean isTranslucent = terrainRenderType == TerrainRenderType.TRANSLUCENT;
+        long drawParamsBasePtr = this.drawParamsPtr + (terrainRenderType.ordinal() * DrawParametersBuffer.SECTIONS * DrawParametersBuffer.FACINGS) * DrawParametersBuffer.STRIDE;
+        final long facingsStride = DrawParametersBuffer.FACINGS * DrawParametersBuffer.STRIDE;
 
-            int drawCount = 0;
+        int count = 0;
+        if (backFaceCulling) {
             for (var iterator = queue.iterator(isTranslucent); iterator.hasNext(); ) {
-
                 final RenderSection section = iterator.next();
-                final DrawParameters drawParameters = section.getDrawParameters(terrainRenderType);
 
-                if (drawParameters.indexCount <= 0)
-                    continue;
-
-                long ptr = bufferPtr + (drawCount * 20L);
-                MemoryUtil.memPutInt(ptr, drawParameters.indexCount);
-                MemoryUtil.memPutInt(ptr + 4, 1);
-                MemoryUtil.memPutInt(ptr + 8, drawParameters.firstIndex == -1 ? 0 : drawParameters.firstIndex);
-                MemoryUtil.memPutInt(ptr + 12, drawParameters.vertexOffset);
-                MemoryUtil.memPutInt(ptr + 16, drawParameters.baseInstance);
-
-                drawCount++;
+                sectionIndices[count] = section.inAreaIndex;
+                masks[count] = getMask(cameraPos, section);
+                count++;
             }
 
-            if (drawCount == 0) return;
+            long ptr = bufferPtr;
 
-            indirectBuffer.recordCopyCmd(byteBuffer.position(0));
+            for (int j = 0; j < count; ++j) {
+                final int sectionIdx = sectionIndices[j];
 
+                int mask = masks[j];
 
-            vkCmdDrawIndexedIndirect(Renderer.getCommandBuffer(), indirectBuffer.getId(), indirectBuffer.getOffset(), drawCount, 20);
+                long drawParamsBasePtr2 = drawParamsBasePtr + (sectionIdx * facingsStride);
+
+                int indexCount = 0;
+                int firstIndex = 0;
+                int vertexOffset = 0;
+                int baseInstance = 0;
+
+                for (int i = 0; i < QuadFacing.COUNT; i++) {
+
+                    if ((mask & 1 << i) == 0) {
+                        drawParamsBasePtr2 += DrawParametersBuffer.STRIDE;
+
+                        // Flush draw cmd
+                        if (indexCount > 0) {
+                            MemoryUtil.memPutInt(ptr, indexCount);
+                            MemoryUtil.memPutInt(ptr + 4, 1);
+                            MemoryUtil.memPutInt(ptr + 8, firstIndex);
+                            MemoryUtil.memPutInt(ptr + 12, vertexOffset);
+                            MemoryUtil.memPutInt(ptr + 16, baseInstance);
+
+                            ptr += CMD_STRIDE;
+                            drawCount++;
+                        }
+
+                        indexCount = 0;
+                        firstIndex = 0;
+                        vertexOffset = 0;
+                        baseInstance = 0;
+
+                        continue;
+                    }
+
+                    long drawParamsPtr = drawParamsBasePtr2;
+
+                    final int indexCount_i = DrawParametersBuffer.getIndexCount(drawParamsPtr);
+                    final int firstIndex_i = DrawParametersBuffer.getFirstIndex(drawParamsPtr);
+                    final int vertexOffset_i = DrawParametersBuffer.getVertexOffset(drawParamsPtr);
+                    final int baseInstance_i = DrawParametersBuffer.getBaseInstance(drawParamsPtr);
+
+                    if (indexCount == 0) {
+                        indexCount = indexCount_i;
+                        firstIndex = firstIndex_i;
+                        vertexOffset = vertexOffset_i;
+                        baseInstance = baseInstance_i;
+                    }
+                    else {
+                        indexCount += indexCount_i;
+                    }
+
+                    drawParamsBasePtr2 += DrawParametersBuffer.STRIDE;
+                }
+
+                if (indexCount > 0) {
+                    MemoryUtil.memPutInt(ptr, indexCount);
+                    MemoryUtil.memPutInt(ptr + 4, 1);
+                    MemoryUtil.memPutInt(ptr + 8, firstIndex);
+                    MemoryUtil.memPutInt(ptr + 12, vertexOffset);
+                    MemoryUtil.memPutInt(ptr + 16, baseInstance);
+
+                    ptr += CMD_STRIDE;
+                    drawCount++;
+                }
+            }
+
+        }
+        else {
+            for (var iterator = queue.iterator(isTranslucent); iterator.hasNext(); ) {
+                final RenderSection section = iterator.next();
+
+                sectionIndices[count] = section.inAreaIndex;
+                count++;
+            }
+
+            final long facingOffset = UNDEFINED_FACING_IDX * DrawParametersBuffer.STRIDE;
+            drawParamsBasePtr += facingOffset;
+
+            long ptr = bufferPtr;
+            for (int i = 0; i < count; ++i) {
+                int sectionIdx = sectionIndices[i];
+
+                long drawParamsPtr = drawParamsBasePtr + (sectionIdx * facingsStride);
+
+                final int indexCount = DrawParametersBuffer.getIndexCount(drawParamsPtr);
+                final int firstIndex = DrawParametersBuffer.getFirstIndex(drawParamsPtr);
+                final int vertexOffset = DrawParametersBuffer.getVertexOffset(drawParamsPtr);
+                final int baseInstance = DrawParametersBuffer.getBaseInstance(drawParamsPtr);
+
+                if (indexCount <= 0) {
+                    continue;
+                }
+
+                MemoryUtil.memPutInt(ptr, indexCount);
+                MemoryUtil.memPutInt(ptr + 4, 1);
+                MemoryUtil.memPutInt(ptr + 8, firstIndex);
+                MemoryUtil.memPutInt(ptr + 12, vertexOffset);
+                MemoryUtil.memPutInt(ptr + 16, baseInstance);
+
+                ptr += CMD_STRIDE;
+                drawCount++;
+            }
         }
 
+        if (drawCount == 0) {
+            return;
+        }
 
+        ByteBuffer byteBuffer = MemoryUtil.memByteBuffer(cmdBufferPtr, drawCount * CMD_STRIDE);
+        indirectBuffer.recordCopyCmd(byteBuffer.position(0));
+
+        vkCmdDrawIndexedIndirect(Renderer.getCommandBuffer(), indirectBuffer.getId(), indirectBuffer.getOffset(), drawCount, CMD_STRIDE);
     }
 
-    public void buildDrawBatchesDirect(StaticQueue<RenderSection> queue, TerrainRenderType renderType) {
-        boolean isTranslucent = renderType == TerrainRenderType.TRANSLUCENT;
+    public void buildDrawBatchesDirect(Vec3 cameraPos, StaticQueue<RenderSection> queue, TerrainRenderType terrainRenderType) {
+        boolean isTranslucent = terrainRenderType == TerrainRenderType.TRANSLUCENT;
+        boolean backFaceCulling = Initializer.CONFIG.backFaceCulling && !isTranslucent;
+
         VkCommandBuffer commandBuffer = Renderer.getCommandBuffer();
 
-        for (var iterator = queue.iterator(isTranslucent); iterator.hasNext(); ) {
-            final RenderSection section = iterator.next();
-            final DrawParameters drawParameters = section.getDrawParameters(renderType);
+        long drawParamsBasePtr = this.drawParamsPtr + (terrainRenderType.ordinal() * DrawParametersBuffer.SECTIONS * DrawParametersBuffer.FACINGS) * DrawParametersBuffer.STRIDE;
+        final long facingsStride = DrawParametersBuffer.FACINGS * DrawParametersBuffer.STRIDE;
 
-            if (drawParameters.indexCount <= 0)
-                continue;
+        int count = 0;
+        if (backFaceCulling) {
+            for (var iterator = queue.iterator(isTranslucent); iterator.hasNext(); ) {
+                final RenderSection section = iterator.next();
 
-            final int firstIndex = drawParameters.firstIndex == -1 ? 0 : drawParameters.firstIndex;
-            vkCmdDrawIndexed(commandBuffer, drawParameters.indexCount, 1, firstIndex, drawParameters.vertexOffset, drawParameters.baseInstance);
+                sectionIndices[count] = section.inAreaIndex;
+                masks[count] = getMask(cameraPos, section);
+                count++;
+            }
+
+            for (int j = 0; j < count; ++j) {
+                final int sectionIdx = sectionIndices[j];
+
+                int mask = masks[j];
+
+                long drawParamsBasePtr2 = drawParamsBasePtr + (sectionIdx * facingsStride);
+
+                int indexCount   = 0;
+                int firstIndex   = 0;
+                int vertexOffset = 0;
+                int baseInstance = 0;
+
+                for (int i = 0; i < QuadFacing.COUNT; i++) {
+
+                    if ((mask & 1 << i) == 0) {
+                        drawParamsBasePtr2 += DrawParametersBuffer.STRIDE;
+
+                        // Flush draw cmd
+                        if (indexCount > 0) {
+                            vkCmdDrawIndexed(commandBuffer, indexCount, 1, firstIndex, vertexOffset, baseInstance);
+                        }
+
+                        indexCount   = 0;
+                        firstIndex   = 0;
+                        vertexOffset = 0;
+                        baseInstance = 0;
+
+                        continue;
+                    }
+
+                    long drawParamsPtr = drawParamsBasePtr2;
+
+                    final int indexCount_i = DrawParametersBuffer.getIndexCount(drawParamsPtr);
+                    final int firstIndex_i = DrawParametersBuffer.getFirstIndex(drawParamsPtr);
+                    final int vertexOffset_i = DrawParametersBuffer.getVertexOffset(drawParamsPtr);
+                    final int baseInstance_i = DrawParametersBuffer.getBaseInstance(drawParamsPtr);
+
+                    if (indexCount == 0) {
+                        indexCount   = indexCount_i;
+                        firstIndex   = firstIndex_i;
+                        vertexOffset = vertexOffset_i;
+                        baseInstance = baseInstance_i;
+                    }
+                    else {
+                        indexCount += indexCount_i;
+                    }
+
+                    drawParamsBasePtr2 += DrawParametersBuffer.STRIDE;
+                }
+
+                if (indexCount > 0) {
+                    vkCmdDrawIndexed(commandBuffer, indexCount, 1, firstIndex, vertexOffset, baseInstance);
+                }
+            }
+
         }
+        else {
+            final long facingOffset = UNDEFINED_FACING_IDX * DrawParametersBuffer.STRIDE;
+            drawParamsBasePtr += facingOffset;
+
+            for (var iterator = queue.iterator(isTranslucent); iterator.hasNext(); ) {
+                final RenderSection section = iterator.next();
+
+                sectionIndices[count] = section.inAreaIndex;
+                count++;
+            }
+
+            for (int i = 0; i < count; ++i) {
+                int sectionIdx = sectionIndices[i];
+
+                long drawParamsPtr = drawParamsBasePtr + (sectionIdx * facingsStride);
+
+                final int indexCount = DrawParametersBuffer.getIndexCount(drawParamsPtr);
+                final int firstIndex = DrawParametersBuffer.getFirstIndex(drawParamsPtr);
+                final int vertexOffset = DrawParametersBuffer.getVertexOffset(drawParamsPtr);
+                final int baseInstance = DrawParametersBuffer.getBaseInstance(drawParamsPtr);
+
+                if (indexCount <= 0) {
+                    continue;
+                }
+
+                vkCmdDrawIndexed(commandBuffer, indexCount, 1, firstIndex, vertexOffset, baseInstance);
+            }
+        }
+    }
+
+    static int getMask(Vec3 camera, RenderSection section) {
+        final int secX = section.xOffset;
+        final int secY = section.yOffset;
+        final int secZ = section.zOffset;
+
+        int mask = 1 << UNDEFINED_FACING_IDX;
+
+        mask |= camera.x - secX >= 0 ? 1 << QuadFacing.X_POS.ordinal() : 0;
+        mask |= camera.y - secY >= 0 ? 1 << QuadFacing.Y_POS.ordinal() : 0;
+        mask |= camera.z - secZ >= 0 ? 1 << QuadFacing.Z_POS.ordinal() : 0;
+        mask |= camera.x - (secX + 16) < 0 ? 1 << QuadFacing.X_NEG.ordinal() : 0;
+        mask |= camera.y - (secY + 16) < 0 ? 1 << QuadFacing.Y_NEG.ordinal() : 0;
+        mask |= camera.z - (secZ + 16) < 0 ? 1 << QuadFacing.Z_NEG.ordinal() : 0;
+
+        return mask;
     }
 
     public void bindBuffers(VkCommandBuffer commandBuffer, Pipeline pipeline, TerrainRenderType terrainRenderType, double camX, double camY, double camZ) {
-
         try (MemoryStack stack = MemoryStack.stackPush()) {
             var vertexBuffer = getAreaBuffer(terrainRenderType);
             nvkCmdBindVertexBuffers(commandBuffer, 0, 1, stack.npointer(vertexBuffer.getId()), stack.npointer(0));
             updateChunkAreaOrigin(commandBuffer, pipeline, camX, camY, camZ, stack);
         }
 
-        if (terrainRenderType == TerrainRenderType.TRANSLUCENT) {
-            vkCmdBindIndexBuffer(commandBuffer, this.indexBuffer.getId(), 0, VK_INDEX_TYPE_UINT16);
+        if (terrainRenderType == TerrainRenderType.TRANSLUCENT && this.indexBuffer != null) {
+            vkCmdBindIndexBuffer(commandBuffer, this.indexBuffer.getId(), 0, VK_INDEX_TYPE_UINT32);
         }
-
     }
 
     public void releaseBuffers() {
@@ -191,6 +472,16 @@ public class DrawBuffers {
         this.indexBuffer = null;
 
         this.allocated = false;
+        for (int section = 0; section < ChunkAreaManager.AREA_SIZE; section++)
+            for (int layer = 0; layer < TerrainRenderType.VALUES.length; layer++)
+                for (int facing = 0; facing < QuadFacing.COUNT; facing++)
+                    DrawParametersBuffer.resetParameters(DrawParametersBuffer.getParamsPtr(this.drawParamsPtr, section, layer, facing));
+    }
+
+    public void free() {
+        this.releaseBuffers();
+
+        DrawParametersBuffer.freeBuffer(this.drawParamsPtr);
     }
 
     public boolean isAllocated() {
@@ -205,25 +496,8 @@ public class DrawBuffers {
         return indexBuffer;
     }
 
-    public static class DrawParameters {
-        int indexCount = 0;
-        int firstIndex = -1;
-        int vertexOffset = -1;
-        int baseInstance;
-
-        public DrawParameters() {}
-
-        public void reset(ChunkArea chunkArea, TerrainRenderType r) {
-            AreaBuffer areaBuffer = chunkArea.getDrawBuffers().getAreaBuffer(r);
-            if (areaBuffer != null && this.vertexOffset != -1) {
-                int segmentOffset = this.vertexOffset * VERTEX_SIZE;
-                areaBuffer.setSegmentFree(segmentOffset);
-            }
-
-            this.indexCount = 0;
-            this.firstIndex = -1;
-            this.vertexOffset = -1;
-        }
+    public long getDrawParamsPtr() {
+        return drawParamsPtr;
     }
 
 }

@@ -22,7 +22,7 @@ public abstract class SamplerManager {
     static final Short2LongMap SAMPLERS = new Short2LongOpenHashMap();
 
     public static long getTextureSampler(byte maxLod, byte flags) {
-        short key = (short) (flags | (maxLod << 8));
+        short key = (short) ((flags & 255) | ((maxLod & 255) << 8));
         long sampler = SAMPLERS.getOrDefault(key, 0L);
 
         if (sampler == 0L) {
@@ -43,13 +43,10 @@ public abstract class SamplerManager {
             VkSamplerCreateInfo samplerInfo = VkSamplerCreateInfo.calloc(stack);
             samplerInfo.sType(VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO);
 
-            if ((flags & LINEAR_FILTERING_BIT) != 0) {
-                samplerInfo.magFilter(VK_FILTER_LINEAR);
-                samplerInfo.minFilter(VK_FILTER_LINEAR);
-            } else {
-                samplerInfo.magFilter(VK_FILTER_NEAREST);
-                samplerInfo.minFilter(VK_FILTER_NEAREST);
-            }
+            boolean minLinear = (flags & LINEAR_FILTERING_BIT) != 0;
+            boolean magLinear = (flags & SEPARATE_MAG_FILTER_BIT) == 0 ? minLinear : (flags & MAG_LINEAR_FILTERING_BIT) != 0;
+            samplerInfo.magFilter(magLinear ? VK_FILTER_LINEAR : VK_FILTER_NEAREST);
+            samplerInfo.minFilter(minLinear ? VK_FILTER_LINEAR : VK_FILTER_NEAREST);
 
             if ((flags & CLAMP_BIT) != 0) {
                 samplerInfo.addressModeU(VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
@@ -107,6 +104,8 @@ public abstract class SamplerManager {
         }
     }
 
+    public static final byte SEPARATE_MAG_FILTER_BIT = 0b1000000;
+    public static final byte MAG_LINEAR_FILTERING_BIT = (byte) 0b10000000;
     public static final byte LINEAR_FILTERING_BIT = 0b1;
     public static final byte CLAMP_BIT = 0b10;
     public static final byte USE_MIPMAPS_BIT = 0b100;

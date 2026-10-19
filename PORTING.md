@@ -1,7 +1,16 @@
 # Native NeoForge port: Minecraft 1.21.1
 
 Original source: VulkanMod 0.4.8 development branch for Fabric/Minecraft 1.21.
+Development versions starting with `0.4.8-neoforge.6-dev` additionally backport terrain facing
+buckets/draw batching, 16-byte vertices, cloud geometry and settings from
+upstream tag `0.6.0` (`8c76e02fe2458a92db5f53f8e10aa2ec6cb88782`).
+Minecraft 1.21.1 and native NeoForge integrations remain the target; the
+Minecraft 1.21.10 GPU API and Fabric Rendering API are not drop-in dependencies.
 The original project is [xCollateral/VulkanMod](https://github.com/xCollateral/VulkanMod).
+Version `0.4.8-neoforge.7-dev` extends this with semaphore-backed uploads, grid
+reuse, sprite interpolation scheduling, independent cloud distance/fog, unified
+window modes, inactivity limits and texture/framebuffer fixes. The feature map
+and platform-specific scope are recorded in [UPSTREAM_PARITY.md](UPSTREAM_PARITY.md).
 This repository maintains an unofficial NeoForge port; see [NOTICE.md](NOTICE.md).
 Target: Minecraft 1.21.1, Java 21, NeoForge 21.1.252. No Connector or Fabric runtime.
 

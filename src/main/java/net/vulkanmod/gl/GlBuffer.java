@@ -44,21 +44,13 @@ public class GlBuffer {
     }
 
     public static void glBufferData(int target, ByteBuffer byteBuffer, int usage) {
-        checkTarget(target);
-
-        // TODO
-
-        pixelUnpackBufferBound = boundBuffer;
+        GlBuffer buffer = boundBuffer(target);
+        buffer.allocate(byteBuffer.remaining());
+        buffer.data.put(byteBuffer.duplicate()).flip();
     }
 
     public static void glBufferData(int target, long size, int usage) {
-        GlBuffer buffer = switch (target) {
-            case GL32.GL_PIXEL_PACK_BUFFER -> pixelPackBufferBound;
-            case GL32.GL_PIXEL_UNPACK_BUFFER -> pixelUnpackBufferBound;
-            default -> throw new IllegalStateException("Unexpected value: " + target);
-        };
-
-        buffer.allocate((int) size);
+        boundBuffer(target).allocate(Math.toIntExact(size));
     }
 
     public static ByteBuffer glMapBuffer(int target, int access) {
@@ -88,6 +80,8 @@ public class GlBuffer {
 
         if (buffer != null)
             buffer.freeData();
+        if (pixelPackBufferBound == buffer) pixelPackBufferBound = null;
+        if (pixelUnpackBufferBound == buffer) pixelUnpackBufferBound = null;
     }
 
     public static GlBuffer getPixelUnpackBufferBound() {
@@ -103,6 +97,13 @@ public class GlBuffer {
             throw new IllegalArgumentException("target %d not supported".formatted(target));
     }
 
+    private static GlBuffer boundBuffer(int target) {
+        checkTarget(target);
+        GlBuffer buffer = target == GL32.GL_PIXEL_PACK_BUFFER ? pixelPackBufferBound : pixelUnpackBufferBound;
+        if (buffer == null) throw new IllegalStateException("No pixel buffer bound");
+        return buffer;
+    }
+
     int id;
     int target;
 
@@ -113,6 +114,7 @@ public class GlBuffer {
     }
 
     private void allocate(int size) {
+        if (size < 0) throw new IllegalArgumentException("Negative pixel buffer size");
         if (this.data != null)
             this.freeData();
 
@@ -125,6 +127,7 @@ public class GlBuffer {
 
     private void freeData() {
         MemoryUtil.memFree(data);
+        data = null;
     }
 
 }

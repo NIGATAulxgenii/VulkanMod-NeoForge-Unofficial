@@ -12,6 +12,6 @@ public class IndexTypeMixin {
      */
     @Overwrite
     public static VertexFormat.IndexType least(int number) {
-        return VertexFormat.IndexType.SHORT;
+        return number <= 65536 ? VertexFormat.IndexType.SHORT : VertexFormat.IndexType.INT;
     }
 }

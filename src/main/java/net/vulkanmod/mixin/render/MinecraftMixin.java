@@ -90,9 +90,9 @@ public class MinecraftMixin {
     private void removeThreadYield() {
     }
 
-    @Inject(method = "getFramerateLimit", at = @At("HEAD"), cancellable = true)
+    @Inject(method = "getFramerateLimit", at = @At("RETURN"), cancellable = true)
     private void limitWhenMinimized(CallbackInfoReturnable<Integer> cir) {
-        if(this.noRender) cir.setReturnValue(10);
+        cir.setReturnValue(Initializer.CONFIG.inactivityLimit.limit(cir.getReturnValue(), this.noRender));
     }
 
     @Redirect(method = "runTick", at = @At(value = "INVOKE", target = "Lcom/mojang/blaze3d/systems/TimerQuery;getInstance()Ljava/util/Optional;"))
@@ -117,11 +117,6 @@ public class MinecraftMixin {
     public void close2(CallbackInfo ci) {
         Vulkan.cleanUp();
         Util.shutdownExecutors();
-    }
-
-    @Redirect(method = "run", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/Minecraft;emergencySave()V"))
-    private void skipEmergencySave(Minecraft instance) {
-
     }
 
     @Inject(method = "resizeDisplay", at = @At("HEAD"))

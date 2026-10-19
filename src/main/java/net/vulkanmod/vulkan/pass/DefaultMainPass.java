@@ -84,6 +84,12 @@ public class DefaultMainPass implements MainPass {
         }
     }
 
+    @Override
+    public void cleanUp() {
+        this.mainRenderPass.cleanUp();
+        this.auxRenderPass.cleanUp();
+    }
+
     public void rebindMainTarget() {
         SwapChain swapChain = Vulkan.getSwapChain();
         VkCommandBuffer commandBuffer = Renderer.getCommandBuffer();

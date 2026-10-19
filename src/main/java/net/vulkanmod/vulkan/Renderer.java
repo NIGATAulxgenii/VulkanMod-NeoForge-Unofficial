@@ -295,9 +295,13 @@ public class Renderer {
             VkSubmitInfo submitInfo = VkSubmitInfo.calloc(stack);
             submitInfo.sType(VK_STRUCTURE_TYPE_SUBMIT_INFO);
 
-            submitInfo.waitSemaphoreCount(1);
-            submitInfo.pWaitSemaphores(stack.longs(imageAvailableSemaphores.get(currentFrame)));
-            submitInfo.pWaitDstStageMask(stack.ints(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT));
+            LongBuffer waitSemaphores = Synchronization.INSTANCE.getWaitSemaphores(stack, imageAvailableSemaphores.get(currentFrame));
+            IntBuffer waitStages = stack.mallocInt(waitSemaphores.remaining());
+            for (int i = 0; i < waitSemaphores.remaining(); i++)
+                waitStages.put(i, i == waitSemaphores.remaining() - 1 ? VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT : VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
+            submitInfo.waitSemaphoreCount(waitSemaphores.remaining());
+            submitInfo.pWaitSemaphores(waitSemaphores);
+            submitInfo.pWaitDstStageMask(waitStages);
 
             submitInfo.pSignalSemaphores(stack.longs(renderFinishedSemaphores.get(currentFrame)));
 
@@ -305,7 +309,7 @@ public class Renderer {
 
             vkResetFences(device, inFlightFences.get(currentFrame));
 
-            Synchronization.INSTANCE.waitFences();
+            Synchronization.INSTANCE.waitLegacyFences();
 
             if ((vkResult = vkQueueSubmit(DeviceManager.getGraphicsQueue().queue(), submitInfo, inFlightFences.get(currentFrame))) != VK_SUCCESS) {
                 vkResetFences(device, inFlightFences.get(currentFrame));
@@ -313,6 +317,7 @@ public class Renderer {
             }
 
             VkPresentInfoKHR presentInfo = VkPresentInfoKHR.calloc(stack);
+            Synchronization.INSTANCE.scheduleFrameReset();
             presentInfo.sType(VK_STRUCTURE_TYPE_PRESENT_INFO_KHR);
 
             presentInfo.pWaitSemaphores(stack.longs(renderFinishedSemaphores.get(currentFrame)));
@@ -404,6 +409,7 @@ public class Renderer {
     }
 
     public void preInitFrame() {
+        if (recordingCmds) flushCmds();
         Profiler p = Profiler.getMainProfiler();
         p.pop();
         p.round();
@@ -415,6 +421,8 @@ public class Renderer {
             Synchronization.INSTANCE.waitFences();
         }
         lastReset = currentFrame;
+
+        vkWaitForFences(device, inFlightFences.get(currentFrame), true, VUtil.UINT64_MAX);
 
         drawer.resetBuffers(currentFrame);
 
@@ -496,6 +504,8 @@ public class Renderer {
 
     public void cleanUpResources() {
         destroySyncObjects();
+        WorldRenderer.getInstance().cleanUp();
+        mainPass.cleanUp();
 
         drawer.cleanUpResources();
 
@@ -697,7 +707,7 @@ public class Renderer {
     }
 
     public static void setScissor(int x, int y, int width, int height) {
-        if (INSTANCE.boundFramebuffer == null)
+        if (!INSTANCE.recordingCmds || INSTANCE.boundFramebuffer == null)
             return;
 
         try (MemoryStack stack = stackPush()) {

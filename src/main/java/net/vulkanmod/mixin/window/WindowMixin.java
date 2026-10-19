@@ -115,6 +115,8 @@ public abstract class WindowMixin {
     @Overwrite
     public void toggleFullScreen() {
         this.fullscreen = !this.fullscreen;
+        Initializer.CONFIG.windowMode = this.fullscreen ? 2 : 0;
+        Initializer.CONFIG.windowedFullscreen = false;
         Options.fullscreenDirty = true;
     }
 
@@ -176,7 +178,7 @@ public abstract class WindowMixin {
                 this.wasOnFullscreen = true;
             }
         }
-        else if (config.windowedFullscreen) {
+        else if (config.windowMode == 1) {
             VideoModeSet.VideoMode videoMode = VideoModeManager.getOsVideoMode();
 
             if (!this.wasOnFullscreen) {

@@ -56,7 +56,7 @@ public class BufferUploaderM {
             renderer.bindGraphicsPipeline(pipeline);
             VTextureSelector.bindShaderTextures(pipeline);
             renderer.uploadAndBindUBOs(pipeline);
-            Renderer.getDrawer().draw(meshData.vertexBuffer(), parameters.mode(), parameters.format(), parameters.vertexCount());
+            Renderer.getDrawer().draw(meshData.vertexBuffer(), meshData.indexBuffer(), parameters);
         }
 
         meshData.close();
@@ -74,7 +74,7 @@ public class BufferUploaderM {
             Pipeline pipeline = renderer.getBoundPipeline();
             renderer.uploadAndBindUBOs(pipeline);
 
-            Renderer.getDrawer().draw(meshData.vertexBuffer(), parameters.mode(), parameters.format(), parameters.vertexCount());
+            Renderer.getDrawer().draw(meshData.vertexBuffer(), meshData.indexBuffer(), parameters);
         }
 
         meshData.close();

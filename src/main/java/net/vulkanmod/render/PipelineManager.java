@@ -1,6 +1,7 @@
 package net.vulkanmod.render;
 
 import com.mojang.blaze3d.vertex.VertexFormat;
+import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import net.minecraft.client.renderer.RenderType;
 import net.vulkanmod.render.chunk.build.thread.ThreadBuilderPack;
 import net.vulkanmod.render.vertex.CustomVertexFormat;
@@ -21,7 +22,7 @@ public abstract class PipelineManager {
         TERRAIN_VERTEX_FORMAT = format;
     }
 
-    static GraphicsPipeline terrainShaderEarlyZ, terrainShader, fastBlitPipeline;
+    static GraphicsPipeline terrainShaderEarlyZ, terrainShader, fastBlitPipeline, cloudsPipeline;
 
     private static Function<TerrainRenderType, GraphicsPipeline> shaderGetter;
 
@@ -40,6 +41,7 @@ public abstract class PipelineManager {
         terrainShaderEarlyZ = createPipeline("terrain","terrain", "terrain_z", TERRAIN_VERTEX_FORMAT);
         terrainShader = createPipeline("terrain", "terrain", "terrain", TERRAIN_VERTEX_FORMAT);
         fastBlitPipeline = createPipeline("blit", "blit", "blit", CustomVertexFormat.NONE);
+        cloudsPipeline = createPipeline("clouds", "clouds", "clouds", DefaultVertexFormat.POSITION_COLOR);
     }
 
     private static GraphicsPipeline createPipeline(String baseName, String vertName, String fragName,VertexFormat vertexFormat) {
@@ -75,9 +77,12 @@ public abstract class PipelineManager {
 
     public static GraphicsPipeline getFastBlitPipeline() { return fastBlitPipeline; }
 
+    public static GraphicsPipeline getCloudsPipeline() { return cloudsPipeline; }
+
     public static void destroyPipelines() {
         terrainShaderEarlyZ.cleanUp();
         terrainShader.cleanUp();
         fastBlitPipeline.cleanUp();
+        cloudsPipeline.cleanUp();
     }
 }

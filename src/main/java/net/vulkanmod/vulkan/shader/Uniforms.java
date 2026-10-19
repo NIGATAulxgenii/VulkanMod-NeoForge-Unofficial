@@ -33,6 +33,7 @@ public class Uniforms {
         //Vec1
         vec1f_uniformMap.put("FogStart", RenderSystem::getShaderFogStart);
         vec1f_uniformMap.put("FogEnd", RenderSystem::getShaderFogEnd);
+        vec1f_uniformMap.put("FogCloudsEnd", () -> Math.clamp(net.vulkanmod.Initializer.CONFIG.cloudDistance, 2, 128) * 16.0f);
         vec1f_uniformMap.put("LineWidth", RenderSystem::getShaderLineWidth);
         vec1f_uniformMap.put("GameTime", RenderSystem::getShaderGameTime);
         vec1f_uniformMap.put("GlintAlpha", RenderSystem::getShaderGlintAlpha);
