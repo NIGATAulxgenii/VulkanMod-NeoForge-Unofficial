@@ -31,3 +31,7 @@ bin/
 # fabric
 
 run/
+
+# smoke test client run directory
+/run-packaged-smoke/
+/run/
