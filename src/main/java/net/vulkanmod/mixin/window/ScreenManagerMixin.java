@@ -14,22 +14,21 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(ScreenManager.class)
 public class ScreenManagerMixin {
+   @Shadow
+   @Final
+   private Long2ObjectMap<Monitor> monitors;
 
-    @Shadow
-    @Final
-    private Long2ObjectMap<Monitor> monitors;
+   @Inject(method = "<init>", at = @At("RETURN"))
+   private void getMonitors(MonitorCreator monitorCreator, CallbackInfo ci) {
+      VideoModeManager.init(this.monitors);
+   }
 
-    @Inject(method = "<init>", at = @At("RETURN"))
-    private void getMonitors(MonitorCreator monitorCreator, CallbackInfo ci) {
-        VideoModeManager.init(this.monitors);
-    }
-
-    @Inject(method = "onMonitorChange", at = @At("RETURN"))
-    private void onMonitorChange(long monitor, int event, CallbackInfo ci) {
-        if (event == 262145) {
-            VideoModeManager.addMonitorVideoModes(monitor);
-        } else if (event == 262146) {
-            VideoModeManager.removeMonitor(monitor);
-        }
-    }
+   @Inject(method = "onMonitorChange", at = @At("RETURN"))
+   private void onMonitorChange(long monitor, int event, CallbackInfo ci) {
+      if (event == 262145) {
+         VideoModeManager.addMonitorVideoModes(monitor);
+      } else if (event == 262146) {
+         VideoModeManager.removeMonitor(monitor);
+      }
+   }
 }

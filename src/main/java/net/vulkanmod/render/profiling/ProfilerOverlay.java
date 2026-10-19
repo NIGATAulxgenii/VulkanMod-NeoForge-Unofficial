@@ -98,7 +98,7 @@ public class ProfilerOverlay {
         List<String> list = new ArrayList<>();
         list.add("");
         list.add("Profiler");
-        list.add("Version: %s %s ".formatted(Initializer.getVersion(), SharedConstants.getCurrentVersion().name()));
+        list.add("Version: %s %s ".formatted(Initializer.getVersion(), SharedConstants.getCurrentVersion().getName()));
 
         this.updateResults();
 

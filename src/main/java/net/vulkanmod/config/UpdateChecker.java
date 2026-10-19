@@ -3,63 +3,66 @@ package net.vulkanmod.config;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import net.fabricmc.loader.api.Version;
-import net.fabricmc.loader.api.VersionParsingException;
-import net.fabricmc.loader.impl.util.version.VersionParser;
-import net.minecraft.SharedConstants;
 import net.vulkanmod.Initializer;
+import org.apache.maven.artifact.versioning.DefaultArtifactVersion;
 
-import java.io.IOException;
+import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
-import java.net.URL;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.util.concurrent.CompletableFuture;
 
-public abstract class UpdateChecker {
-    private static boolean updateAvailable = false;
+public final class UpdateChecker {
+    public static final String RELEASES_URL = "https://github.com/NIGATAulxgenii/VulkanMod-NeoForge-Unofficial/releases";
+    private static volatile String updateVersion;
 
-    public static void checkForUpdates() {
-        CompletableFuture.supplyAsync(() -> {
+    public static void checkForUpdates(String currentVersion) {
+        CompletableFuture.runAsync(() -> {
+            HttpURLConnection connection = null;
             try {
-                String req = "https://api.modrinth.com/v2/project/vulkanmod/version?include_changelog=false";
-                String mcVersion = SharedConstants.getCurrentVersion().name();
-                req += "&game_versions=%s".formatted(mcVersion);
-
-                URL url = new URL(req);
-                HttpURLConnection http = (HttpURLConnection)url.openConnection();
-                var inputStream = http.getInputStream();
-
-                JsonObject data = JsonParser.parseString("{ versions: " + new String(inputStream.readAllBytes()) + "}").getAsJsonObject();
-                JsonArray versions = data.getAsJsonArray("versions");
-                http.disconnect();
-
-                String version = String.valueOf(versions.get(0).getAsJsonObject().get("version_number")).replace("\"", "");
-
-                var currentVersion = VersionParser.parseSemantic(Initializer.getVersion());
-
-                if (currentVersion.getPrereleaseKey().isPresent()) {
-                    Initializer.LOGGER.info("Pre-release version, skipping update check.");
-
-                    return null;
+                connection = (HttpURLConnection) URI.create("https://api.github.com/repos/NIGATAulxgenii/VulkanMod-NeoForge-Unofficial/releases?per_page=20").toURL().openConnection();
+                connection.setConnectTimeout(5000);
+                connection.setReadTimeout(5000);
+                connection.setRequestProperty("Accept", "application/vnd.github+json");
+                connection.setRequestProperty("User-Agent", "VulkanMod-NeoForge/" + currentVersion);
+                if (connection.getResponseCode() != 200) return;
+                try (var reader = new InputStreamReader(connection.getInputStream(), StandardCharsets.UTF_8)) {
+                    updateVersion = findUpdate(JsonParser.parseReader(reader).getAsJsonArray(), currentVersion);
                 }
-
-                updateAvailable = currentVersion.compareTo(Version.parse(version)) < 0;
-
-                if (updateAvailable) {
-                    Initializer.LOGGER.info("Update available!");
-                }
+                if (updateVersion != null) Initializer.LOGGER.info("NeoForge port update available: {}", updateVersion);
+            } catch (Exception error) {
+                Initializer.LOGGER.debug("Unable to check NeoForge port updates", error);
+            } finally {
+                if (connection != null) connection.disconnect();
             }
-            catch (IOException e) {
-                Initializer.LOGGER.info("Error occurred, skipping update check.");
-            }
-            catch (VersionParsingException e) {
-                Initializer.LOGGER.info("Unable to parse version, skipping update check.");
-            }
-
-            return null;
         });
     }
 
+    static String findUpdate(JsonArray releases, String currentVersion) {
+        String newest = currentVersion;
+        for (var entry : releases) {
+            JsonObject release = entry.getAsJsonObject();
+            if (release.get("draft").getAsBoolean()) continue;
+            String tag = release.get("tag_name").getAsString().replaceFirst("^v", "");
+            boolean compatible = false;
+            for (var asset : release.getAsJsonArray("assets")) {
+                String name = asset.getAsJsonObject().get("name").getAsString();
+                if (name.startsWith("VulkanMod-1.21.1-NeoForge-") && name.endsWith(".jar") && !name.endsWith("-sources.jar")) {
+                    compatible = true;
+                    break;
+                }
+            }
+            if (compatible && compareVersions(tag, newest) > 0) newest = tag;
+        }
+        return newest.equals(currentVersion) ? null : newest;
+    }
+
+    private static int compareVersions(String first, String second) {
+        return new DefaultArtifactVersion(first.replaceFirst("-dev$", "-SNAPSHOT"))
+                .compareTo(new DefaultArtifactVersion(second.replaceFirst("-dev$", "-SNAPSHOT")));
+    }
+
     public static boolean isUpdateAvailable() {
-        return updateAvailable;
+        return updateVersion != null;
     }
 }

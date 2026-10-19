@@ -1,118 +1,176 @@
 package net.vulkanmod.render.chunk.build.renderer;
 
-import com.mojang.blaze3d.vertex.VertexConsumer;
-import net.fabricmc.fabric.api.renderer.v1.mesh.ShadeMode;
-import net.fabricmc.fabric.api.util.TriState;
+import it.unimi.dsi.fastutil.objects.Object2ByteLinkedOpenHashMap;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.ItemBlockRenderTypes;
-import net.minecraft.client.renderer.block.model.BlockStateModel;
-import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
+import net.minecraft.client.color.block.BlockColors;
+import net.minecraft.client.renderer.block.model.BakedQuad;
+import net.minecraft.client.resources.model.BakedModel;
+import net.minecraft.client.renderer.RenderType;
+import net.neoforged.neoforge.client.model.data.ModelData;
+import net.neoforged.neoforge.common.util.TriState;
 import net.minecraft.core.BlockPos;
-import net.minecraft.world.level.BlockAndTintGetter;
+import net.minecraft.core.Direction;
+import net.minecraft.core.Vec3i;
+import net.minecraft.util.RandomSource;
+import net.minecraft.world.level.BlockGetter;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.level.levelgen.SingleThreadedRandomSource;
 import net.minecraft.world.phys.Vec3;
-import net.vulkanmod.Initializer;
-import net.vulkanmod.render.chunk.build.frapi.mesh.MutableQuadViewImpl;
-import net.vulkanmod.render.chunk.build.frapi.render.AbstractBlockRenderContext;
+import net.minecraft.world.phys.shapes.BooleanOp;
+import net.minecraft.world.phys.shapes.Shapes;
+import net.minecraft.world.phys.shapes.VoxelShape;
 import net.vulkanmod.render.chunk.build.light.LightPipeline;
 import net.vulkanmod.render.chunk.build.light.data.QuadLightData;
 import net.vulkanmod.render.chunk.build.thread.BuilderResources;
-import net.vulkanmod.render.chunk.cull.QuadFacing;
 import net.vulkanmod.render.model.quad.QuadUtils;
 import net.vulkanmod.render.model.quad.ModelQuadView;
-import net.vulkanmod.render.vertex.TerrainBufferBuilder;
 import net.vulkanmod.render.vertex.TerrainBuilder;
-import net.vulkanmod.render.vertex.TerrainRenderType;
+import net.vulkanmod.render.vertex.TerrainBufferBuilder;
+import net.vulkanmod.render.chunk.cull.QuadFacing;
+import net.vulkanmod.render.vertex.format.I32_SNorm;
 import net.vulkanmod.vulkan.util.ColorUtil;
 import org.joml.Vector3f;
 
-public class BlockRenderer extends AbstractBlockRenderContext {
-    private Vector3f pos;
+import java.util.List;
 
-    private BuilderResources resources;
-    private TerrainBuilder terrainBuilder;
+public class BlockRenderer {
 
-    final boolean backFaceCulling = Initializer.CONFIG.backFaceCulling;
+    static final Direction[] DIRECTIONS = Direction.values();
+    private static BlockColors blockColors;
 
-    private TerrainRenderType renderType;
+    RandomSource randomSource = RandomSource.createNewThreadLocalInstance();
+
+    final Vector3f pos = new Vector3f();
+    BlockPos blockPos;
+    BlockPos.MutableBlockPos mutableBlockPos = new BlockPos.MutableBlockPos();
+
+    BuilderResources resources;
+
+    BlockState blockState;
+    ModelData modelData;
+    RenderType renderType;
 
     public void setResources(BuilderResources resources) {
         this.resources = resources;
     }
 
-    public BlockRenderer(LightPipeline flatLightPipeline, LightPipeline smoothLightPipeline) {
-        super();
-        this.setupLightPipelines(flatLightPipeline, smoothLightPipeline);
+    final Object2ByteLinkedOpenHashMap<Block.BlockStatePairKey> occlusionCache = new Object2ByteLinkedOpenHashMap<>(2048, 0.25F) {
+        protected void rehash(int i) {
+        }
+    };
 
-        this.random = new SingleThreadedRandomSource(42L);
+    private final LightPipeline flatLightPipeline;
+    private final LightPipeline smoothLightPipeline;
+
+    public BlockRenderer(LightPipeline flat, LightPipeline smooth) {
+        this.flatLightPipeline = flat;
+        this.smoothLightPipeline = smooth;
+        blockColors = Minecraft.getInstance().getBlockColors();
+        occlusionCache.defaultReturnValue((byte) 127);
     }
 
-    public void renderBlock(BlockState blockState, BlockPos blockPos, Vector3f pos) {
-        this.pos = pos;
+    public static void setBlockColors(BlockColors blockColors) {
+        BlockRenderer.blockColors = blockColors;
+    }
+
+    public void renderBlock(BlockState blockState, BlockPos blockPos, Vector3f pos, TerrainBuilder bufferBuilder,
+                            BakedModel model, ModelData modelData, RenderType renderType) {
+        // Each layer starts from the same block origin; offsets must not accumulate.
+        this.pos.set(pos);
         this.blockPos = blockPos;
         this.blockState = blockState;
-        this.random.setSeed(blockState.getSeed(blockPos));
-
-        TerrainRenderType renderType = TerrainRenderType.get(ItemBlockRenderTypes.getChunkRenderType(blockState));
-        renderType = TerrainRenderType.getRemapped(renderType);
+        this.modelData = modelData;
         this.renderType = renderType;
-        this.terrainBuilder = this.resources.builderPack.builder(renderType);
-        this.terrainBuilder.setBlockAttributes(blockState);
 
-        BlockStateModel model = Minecraft.getInstance().getBlockRenderer().getBlockModel(blockState);
+        long seed = blockState.getSeed(blockPos);
 
-        BlockAndTintGetter renderRegion = this.renderRegion;
-        Vec3 offset = blockState.getOffset(blockPos);
+        tessellateBlock(model, bufferBuilder, seed);
+    }
+
+    public void renderBlock(BlockState state, BlockPos position, Vector3f origin) {
+        var region = resources.getRegion();
+        var model = Minecraft.getInstance().getBlockRenderer().getBlockModel(state);
+        var data = model.getModelData(region, position, state, region.getModelData(position));
+        randomSource.setSeed(state.getSeed(position));
+        for (var layer : model.getRenderTypes(state, randomSource, data)) {
+            var type = net.vulkanmod.render.vertex.TerrainRenderType.getRemapped(net.vulkanmod.render.vertex.TerrainRenderType.get(layer));
+            var builder = resources.builderPack.builder(type);
+            builder.setBlockAttributes(state);
+            renderBlock(state, position, origin, builder, model, data, layer);
+        }
+    }
+
+    public void tessellateBlock(BakedModel bakedModel, TerrainBuilder bufferBuilder, long seed) {
+        Vec3 offset = blockState.getOffset(resources.getRegion(), blockPos);
+
         pos.add((float) offset.x, (float) offset.y, (float) offset.z);
 
-        this.prepareForBlock(blockState, blockPos, blockState.getLightEmission() == 0);
+        TriState ao = bakedModel.useAmbientOcclusion(blockState, modelData, renderType);
+        boolean useAO = Minecraft.useAmbientOcclusion() &&
+                (ao == TriState.TRUE || (ao == TriState.DEFAULT && blockState.getLightEmission(resources.getRegion(), blockPos) == 0));
+        LightPipeline lightPipeline = useAO ? this.smoothLightPipeline : this.flatLightPipeline;
 
-        model.emitQuads(this.getEmitter(), renderRegion, blockPos, blockState, this.random, this::isFaceCulled);
+        //noinspection ForLoopReplaceableByForEach
+        for (int i = 0; i < DIRECTIONS.length; ++i) {
+            Direction direction = DIRECTIONS[i];
+
+            randomSource.setSeed(seed);
+            List<BakedQuad> quads = bakedModel.getQuads(blockState, direction, randomSource, modelData, renderType);
+
+            if (!quads.isEmpty()) {
+                mutableBlockPos.setWithOffset(blockPos, direction);
+                if (shouldRenderFace(blockState, direction, mutableBlockPos)) {
+                    renderModelFace(bufferBuilder, quads, lightPipeline, direction);
+                }
+            }
+        }
+
+        randomSource.setSeed(seed);
+        List<BakedQuad> quads = bakedModel.getQuads(blockState, null, randomSource, modelData, renderType);
+        if (!quads.isEmpty()) {
+            renderModelFace(bufferBuilder, quads, lightPipeline, null);
+        }
     }
 
-    @Override
-    protected VertexConsumer getVertexConsumer(ChunkSectionLayer layer) {
-        return null;
+    private void renderModelFace(TerrainBuilder bufferBuilder, List<BakedQuad> quads, LightPipeline lightPipeline, Direction cullFace) {
+        QuadLightData quadLightData = resources.quadLightData;
+
+        for (int i = 0; i < quads.size(); ++i) {
+            BakedQuad bakedQuad = quads.get(i);
+            ModelQuadView quadView = (ModelQuadView) bakedQuad;
+            LightPipeline quadPipeline = bakedQuad.hasAmbientOcclusion() ? lightPipeline : this.flatLightPipeline;
+            quadPipeline.calculate(quadView, blockPos, quadLightData, cullFace, bakedQuad.getDirection(), bakedQuad.isShade());
+            putQuadData(bufferBuilder, quadView, quadLightData);
+        }
     }
 
-    protected void endRenderQuad(MutableQuadViewImpl quad) {
-        final TriState aoMode = quad.ambientOcclusion();
-        final boolean ao = this.useAO && (aoMode == TriState.TRUE || (aoMode == TriState.DEFAULT && this.defaultAO));
-        final boolean emissive = quad.emissive();
-        final boolean vanillaShade = quad.shadeMode() == ShadeMode.VANILLA;
-
-        TerrainBuilder terrainBuilder = getBufferBuilder(quad.renderLayer());
-
-        LightPipeline lightPipeline = ao ? this.smoothLightPipeline : this.flatLightPipeline;
-
-        tintQuad(quad);
-        shadeQuad(quad, lightPipeline, emissive, vanillaShade);
-        bufferQuad(terrainBuilder, this.pos, quad, this.quadLightData);
-    }
-
-    private TerrainBuilder getBufferBuilder(ChunkSectionLayer layer) {
-        if (layer == null) {
-            return this.terrainBuilder;
+    private void putQuadData(TerrainBuilder bufferBuilder, ModelQuadView quadView, QuadLightData quadLightData) {
+        float r, g, b;
+        if (quadView.isTinted()) {
+            int color = blockColors.getColor(blockState, resources.getRegion(), blockPos, quadView.getColorIndex());
+            r = ColorUtil.ARGB.unpackR(color);
+            g = ColorUtil.ARGB.unpackG(color);
+            b = ColorUtil.ARGB.unpackB(color);
         } else {
-            TerrainRenderType renderType = TerrainRenderType.get(layer);
-            renderType = TerrainRenderType.getRemapped(renderType);
-            TerrainBuilder bufferBuilder = this.resources.builderPack.builder(renderType);
-            bufferBuilder.setBlockAttributes(this.blockState);
-
-            return bufferBuilder;
+            r = 1.0F;
+            g = 1.0F;
+            b = 1.0F;
         }
+
+        putQuadData(bufferBuilder, pos, quadView, quadLightData, r, g, b);
     }
 
-    public void bufferQuad(TerrainBuilder terrainBuilder, Vector3f pos, ModelQuadView quad, QuadLightData quadLightData) {
-        QuadFacing quadFacing = quad.getQuadFacing();
-
-        if (renderType == TerrainRenderType.TRANSLUCENT || !this.backFaceCulling) {
-            quadFacing = QuadFacing.UNDEFINED;
+    public void putQuadData(TerrainBuilder terrainBuilder, Vector3f pos, ModelQuadView quad, QuadLightData quadLightData, float red, float green, float blue) {
+        QuadFacing facing = quad.getQuadFacing();
+        if (renderType == RenderType.translucent() || !net.vulkanmod.Initializer.CONFIG.backFaceCulling) {
+            facing = QuadFacing.UNDEFINED;
         }
-
-        TerrainBufferBuilder bufferBuilder = terrainBuilder.getBufferBuilder(quadFacing.ordinal());
-
+        for (int i = 0; i < 4; i++) {
+            float x = pos.x + quad.getX(i), y = pos.y + quad.getY(i), z = pos.z + quad.getZ(i);
+            if (x < 0 || y < 0 || z < 0 || x > 16 || y > 16 || z > 16) facing = QuadFacing.UNDEFINED;
+        }
+        TerrainBufferBuilder bufferBuilder = terrainBuilder.getBufferBuilder(facing.ordinal());
+        Vec3i normal = quad.getFacingDirection().getNormal();
         int packedNormal = quad.getNormal();
 
         float[] brightnessArr = quadLightData.br;
@@ -128,10 +186,20 @@ public class BlockRenderer extends AbstractBlockRenderContext {
             final float y = pos.y() + quad.getY(idx);
             final float z = pos.z() + quad.getZ(idx);
 
+            final float r, g, b;
+            final float quadR, quadG, quadB;
+
             final int quadColor = quad.getColor(idx);
+            quadR = ColorUtil.RGBA.unpackR(quadColor);
+            quadG = ColorUtil.RGBA.unpackG(quadColor);
+            quadB = ColorUtil.RGBA.unpackB(quadColor);
 
-            int color = ColorUtil.ARGB.toRGBA(quadColor);
+            final float brightness = brightnessArr[idx];
+            r = quadR * brightness * red;
+            g = quadG * brightness * green;
+            b = quadB * brightness * blue;
 
+            final int color = ColorUtil.RGBA.pack(r, g, b, 1.0f);
             final int light = lights[idx];
             final float u = quad.getU(idx);
             final float v = quad.getV(idx);
@@ -143,5 +211,46 @@ public class BlockRenderer extends AbstractBlockRenderContext {
 
     }
 
-}
+    public boolean shouldRenderFace(BlockState blockState, Direction direction, BlockPos adjPos) {
+        BlockGetter blockGetter = resources.getRegion();
+        BlockState adjBlockState = blockGetter.getBlockState(adjPos);
 
+        if (blockState.skipRendering(adjBlockState, direction)) {
+            return false;
+        }
+
+        if (adjBlockState.canOcclude()) {
+            VoxelShape shape = blockState.getFaceOcclusionShape(blockGetter, blockPos, direction);
+
+            if (shape.isEmpty())
+                return true;
+
+            VoxelShape adjShape = adjBlockState.getFaceOcclusionShape(blockGetter, adjPos, direction.getOpposite());
+
+            if (adjShape.isEmpty())
+                return true;
+
+            if (shape == Shapes.block() && adjShape == Shapes.block()) {
+                return false;
+            }
+
+            Block.BlockStatePairKey blockStatePairKey = new Block.BlockStatePairKey(blockState, adjBlockState, direction);
+
+            byte b = occlusionCache.getAndMoveToFirst(blockStatePairKey);
+            if (b != 127) {
+                return b != 0;
+            } else {
+                boolean bl = Shapes.joinIsNotEmpty(shape, adjShape, BooleanOp.ONLY_FIRST);
+
+                if (occlusionCache.size() == 2048) {
+                    occlusionCache.removeLastByte();
+                }
+
+                occlusionCache.putAndMoveToFirst(blockStatePairKey, (byte) (bl ? 1 : 0));
+                return bl;
+            }
+        }
+
+        return true;
+    }
+}

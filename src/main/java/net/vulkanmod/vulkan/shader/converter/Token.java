@@ -1,50 +1,39 @@
 package net.vulkanmod.vulkan.shader.converter;
 
 public class Token {
+   public final Token.TokenType type;
+   public String value;
 
-    public enum TokenType {
-        PREPROCESSOR,
-        KEYWORD,
-        IDENTIFIER,
-        LITERAL,
-        OPERATOR,
-        PUNCTUATION,
-        STRING,
-        SPACING,
-        COMMENT,
+   public Token(Token.TokenType type, String value) {
+      this.type = type;
+      this.value = value;
+   }
 
-        // Symbols
-        LEFT_BRACE,   // {
-        RIGHT_BRACE,  // }
-        LEFT_PARENTHESIS,   // (
-        RIGHT_PARENTHESIS,  // )
-        COLON,    // :
-        SEMICOLON,    // ;
-        DOT,    // .
-        COMMA,    // ,
+   @Override
+   public String toString() {
+      return "Token{type=" + this.type + ", value='" + this.value + "'}";
+   }
 
-        // Data Types
-        TYPE,
-
-        // GLSL
-        LAYOUT,
-
-        EOF
-    }
-
-    public final TokenType type;
-    public String value;
-
-    public Token(TokenType type, String value) {
-        this.type = type;
-        this.value = value;
-    }
-
-    @Override
-    public String toString() {
-        return "Token{" +
-               "type=" + type +
-               ", value='" + value + '\'' +
-               '}';
-    }
+   public static enum TokenType {
+      PREPROCESSOR,
+      KEYWORD,
+      IDENTIFIER,
+      LITERAL,
+      OPERATOR,
+      PUNCTUATION,
+      STRING,
+      SPACING,
+      COMMENT,
+      LEFT_BRACE,
+      RIGHT_BRACE,
+      LEFT_PARENTHESIS,
+      RIGHT_PARENTHESIS,
+      COLON,
+      SEMICOLON,
+      DOT,
+      COMMA,
+      TYPE,
+      LAYOUT,
+      EOF;
+   }
 }

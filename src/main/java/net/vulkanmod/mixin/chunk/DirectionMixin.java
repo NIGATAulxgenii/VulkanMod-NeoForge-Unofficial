@@ -8,17 +8,15 @@ import org.spongepowered.asm.mixin.Shadow;
 
 @Mixin(Direction.class)
 public class DirectionMixin {
+   @Shadow
+   @Final
+   private static Direction[] BY_3D_DATA;
+   @Shadow
+   @Final
+   private int oppositeIndex;
 
-    @Shadow @Final private static Direction[] BY_3D_DATA;
-
-    @Shadow @Final private int oppositeIndex;
-
-    /**
-     * @author
-     * @reason
-     */
-    @Overwrite
-    public Direction getOpposite() {
-        return BY_3D_DATA[this.oppositeIndex];
-    }
+   @Overwrite
+   public Direction getOpposite() {
+      return BY_3D_DATA[this.oppositeIndex];
+   }
 }

@@ -12,15 +12,14 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(ClientPacketListener.class)
 public class ClientPacketListenerM {
+   @Inject(method = "applyLightData", at = @At("RETURN"))
+   private void setChunkStatus(int x, int z, ClientboundLightUpdatePacketData clientboundLightUpdatePacketData, CallbackInfo ci) {
+      ChunkStatusMap.INSTANCE.setChunkStatus(x, z, (byte)2);
+   }
 
-    @Inject(method = "applyLightData", at = @At("RETURN"))
-    private void setChunkStatus(int x, int z, ClientboundLightUpdatePacketData clientboundLightUpdatePacketData, boolean bl, CallbackInfo ci) {
-        ChunkStatusMap.INSTANCE.setChunkStatus(x, z, ChunkStatusMap.LIGHT_READY);
-    }
-
-    @Inject(method = "handleForgetLevelChunk", at = @At("RETURN"))
-    private void resetChunkStatus(ClientboundForgetLevelChunkPacket clientboundForgetLevelChunkPacket, CallbackInfo ci) {
-        ChunkPos chunkPos = clientboundForgetLevelChunkPacket.pos();
-        ChunkStatusMap.INSTANCE.resetChunkStatus(chunkPos.x, chunkPos.z, ChunkStatusMap.LIGHT_READY);
-    }
+   @Inject(method = "handleForgetLevelChunk", at = @At("RETURN"))
+   private void resetChunkStatus(ClientboundForgetLevelChunkPacket clientboundForgetLevelChunkPacket, CallbackInfo ci) {
+      ChunkPos chunkPos = clientboundForgetLevelChunkPacket.pos();
+      ChunkStatusMap.INSTANCE.resetChunkStatus(chunkPos.x, chunkPos.z, (byte)2);
+   }
 }

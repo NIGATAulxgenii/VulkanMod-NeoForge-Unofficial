@@ -1,263 +1,254 @@
 package net.vulkanmod.gl;
 
 import it.unimi.dsi.fastutil.ints.Int2ReferenceOpenHashMap;
+import java.nio.ByteBuffer;
 import net.vulkanmod.vulkan.texture.ImageUtil;
 import net.vulkanmod.vulkan.texture.SamplerManager;
 import net.vulkanmod.vulkan.texture.VTextureSelector;
 import net.vulkanmod.vulkan.texture.VulkanImage;
-import org.lwjgl.opengl.GL11;
-import org.lwjgl.opengl.GL30;
 import org.lwjgl.system.MemoryUtil;
 
-import java.nio.ByteBuffer;
-
-import static org.lwjgl.vulkan.VK10.*;
-
 public class VkGlRenderbuffer {
-    private static int ID_COUNTER = 1;
-    private static final Int2ReferenceOpenHashMap<VkGlRenderbuffer> map = new Int2ReferenceOpenHashMap<>();
-    private static int boundId = 0;
-    private static VkGlRenderbuffer bound;
+   private static int ID_COUNTER = 1;
+   private static final Int2ReferenceOpenHashMap<VkGlRenderbuffer> map = new Int2ReferenceOpenHashMap();
+   private static int boundId = 0;
+   private static VkGlRenderbuffer bound;
+   final int id;
+   VulkanImage vulkanImage;
+   int internalFormat;
+   boolean needsUpdate = false;
+   int maxLevel = 0;
+   int maxLod = 0;
+   int minFilter;
+   int magFilter = 9729;
 
-    public static int genId() {
-        int id = ID_COUNTER;
-        map.put(id, new VkGlRenderbuffer(id));
-        ID_COUNTER++;
-        return id;
-    }
+   public static int genId() {
+      int id = ID_COUNTER;
+      map.put(id, new VkGlRenderbuffer(id));
+      ID_COUNTER++;
+      return id;
+   }
 
-    public static void bindRenderbuffer(int target, int id) {
-        boundId = id;
-        bound = map.get(id);
-
-        if (id <= 0)
-            return;
-
-        if (bound == null)
+   public static void bindRenderbuffer(int target, int id) {
+      boundId = id;
+      bound = (VkGlRenderbuffer)map.get(id);
+      if (id > 0) {
+         if (bound == null) {
             throw new NullPointerException("bound texture is null");
-
-        VulkanImage vulkanImage = bound.vulkanImage;
-        if (vulkanImage != null)
-            VTextureSelector.bindTexture(vulkanImage);
-    }
-
-    public static void deleteRenderbuffer(int i) {
-        map.remove(i);
-    }
-
-    public static VkGlRenderbuffer getRenderbuffer(int id) {
-        return map.get(id);
-    }
-
-    public static void renderbufferStorage(int target, int internalFormat, int width, int height) {
-        if (width == 0 || height == 0)
-            return;
-
-        bound.internalFormat = internalFormat;
-
-        bound.allocateIfNeeded(width, height, internalFormat);
-    }
-
-    public static void texParameteri(int target, int pName, int param) {
-        if (target != GL11.GL_TEXTURE_2D)
-            throw new UnsupportedOperationException();
-
-        switch (pName) {
-            case GL30.GL_TEXTURE_MAX_LEVEL -> bound.setMaxLevel(param);
-            case GL30.GL_TEXTURE_MAX_LOD -> bound.setMaxLod(param);
-            case GL30.GL_TEXTURE_MIN_LOD -> {}
-            case GL30.GL_TEXTURE_LOD_BIAS -> {}
-
-            case GL11.GL_TEXTURE_MAG_FILTER -> bound.setMagFilter(param);
-            case GL11.GL_TEXTURE_MIN_FILTER -> bound.setMinFilter(param);
-
-            default -> {
+         } else {
+            VulkanImage vulkanImage = bound.vulkanImage;
+            if (vulkanImage != null) {
+               VTextureSelector.bindTexture(vulkanImage);
             }
-        }
+         }
+      }
+   }
 
-        //TODO
-    }
+   public static void deleteRenderbuffer(int i) {
+      map.remove(i);
+   }
 
-    public static int getTexLevelParameter(int target, int level, int pName) {
-        if (bound == null || target == GL11.GL_TEXTURE_2D)
-            return -1;
+   public static VkGlRenderbuffer getRenderbuffer(int id) {
+      return (VkGlRenderbuffer)map.get(id);
+   }
 
-        return switch (pName) {
-            case GL11.GL_TEXTURE_INTERNAL_FORMAT -> GlUtil.getGlFormat(bound.vulkanImage.format);
-            case GL11.GL_TEXTURE_WIDTH -> bound.vulkanImage.width;
-            case GL11.GL_TEXTURE_HEIGHT -> bound.vulkanImage.height;
+   public static void renderbufferStorage(int target, int internalFormat, int width, int height) {
+      if (width != 0 && height != 0) {
+         bound.internalFormat = internalFormat;
+         bound.allocateIfNeeded(width, height, internalFormat);
+      }
+   }
 
+   public static void texParameteri(int target, int pName, int param) {
+      if (target != 3553) {
+         throw new UnsupportedOperationException();
+      } else {
+         switch (pName) {
+            case 10240:
+               bound.setMagFilter(param);
+               break;
+            case 10241:
+               bound.setMinFilter(param);
+            case 33082:
+            case 34049:
+            default:
+               break;
+            case 33083:
+               bound.setMaxLod(param);
+               break;
+            case 33085:
+               bound.setMaxLevel(param);
+         }
+      }
+   }
+
+   public static int getTexLevelParameter(int target, int level, int pName) {
+      if (bound != null && target != 3553) {
+         return switch (pName) {
+            case 4096 -> bound.vulkanImage.width;
+            case 4097 -> bound.vulkanImage.height;
             default -> -1;
-        };
-    }
+            case 4099 -> GlUtil.getGlFormat(bound.vulkanImage.format);
+         };
+      } else {
+         return -1;
+      }
+   }
 
-    public static void generateMipmap(int target) {
-        if (target != GL11.GL_TEXTURE_2D)
-            throw new UnsupportedOperationException();
+   public static void generateMipmap(int target) {
+      if (target != 3553) {
+         throw new UnsupportedOperationException();
+      } else {
+         bound.generateMipmaps();
+      }
+   }
 
-        bound.generateMipmaps();
-    }
+   public static void setVulkanImage(int id, VulkanImage vulkanImage) {
+      VkGlRenderbuffer texture = (VkGlRenderbuffer)map.get(id);
+      texture.vulkanImage = vulkanImage;
+   }
 
-    public static void setVulkanImage(int id, VulkanImage vulkanImage) {
-        VkGlRenderbuffer texture = map.get(id);
+   public static VkGlRenderbuffer getBound() {
+      return bound;
+   }
 
-        texture.vulkanImage = vulkanImage;
-    }
+   public VkGlRenderbuffer(int id) {
+      this.id = id;
+   }
 
-    public static VkGlRenderbuffer getBound() {
-        return bound;
-    }
+   void allocateIfNeeded(int width, int height, int format) {
+      int vkFormat = GlUtil.vulkanFormat(format);
+      this.needsUpdate = this.needsUpdate
+         | (this.vulkanImage == null || this.vulkanImage.width != width || this.vulkanImage.height != height || vkFormat != this.vulkanImage.format);
+      if (this.needsUpdate) {
+         this.allocateImage(width, height, vkFormat);
+         this.updateSampler();
+         this.needsUpdate = false;
+      }
+   }
 
-    final int id;
-    VulkanImage vulkanImage;
-    int internalFormat;
+   void allocateImage(int width, int height, int vkFormat) {
+      if (this.vulkanImage != null) {
+         this.vulkanImage.free();
+      }
 
-    boolean needsUpdate = false;
-    int maxLevel = 0;
-    int maxLod = 0;
-    int minFilter, magFilter = GL11.GL_LINEAR;
+      if (VulkanImage.isDepthFormat(vkFormat)) {
+         this.vulkanImage = VulkanImage.createDepthImage(vkFormat, width, height, 37, false, true);
+      } else {
+         this.vulkanImage = new VulkanImage.Builder(width, height).setMipLevels(this.maxLevel + 1).setFormat(vkFormat).addUsage(16).createVulkanImage();
+      }
 
-    public VkGlRenderbuffer(int id) {
-        this.id = id;
-    }
+      VTextureSelector.bindTexture(this.vulkanImage);
+   }
 
-    void allocateIfNeeded(int width, int height, int format) {
-        int vkFormat = GlUtil.vulkanFormat(format);
+   void updateSampler() {
+      if (this.vulkanImage != null) {
+         int addressMode = 2;
+         int vkMinFilter;
+         int mipmapMode;
+         switch (this.minFilter) {
+            case 9728:
+            case 9984:
+               vkMinFilter = 0;
+               mipmapMode = 0;
+               break;
+            case 9729:
+            case 9987:
+               vkMinFilter = 1;
+               mipmapMode = 1;
+               break;
+            case 9985:
+               vkMinFilter = 1;
+               mipmapMode = 0;
+               break;
+            case 9986:
+               vkMinFilter = 0;
+               mipmapMode = 1;
+               break;
+            default:
+               throw new IllegalStateException("Unexpected min filter value: %d".formatted(this.minFilter));
+         }
+         int vkMagFilter = switch (this.magFilter) {
+            case 9728 -> 0;
+            case 9729 -> 1;
+            default -> throw new IllegalStateException("Unexpected mag filter value: %d".formatted(this.magFilter));
+         };
+         long sampler = SamplerManager.getSampler(addressMode, addressMode, vkMinFilter, vkMagFilter, mipmapMode, this.maxLod, false, 0.0F, -1);
+         this.vulkanImage.setSampler(sampler);
+      }
+   }
 
-        needsUpdate |= vulkanImage == null ||
-                vulkanImage.width != width || vulkanImage.height != height ||
-                vkFormat != vulkanImage.format;
+   private void uploadImage(ByteBuffer pixels) {
+      int width = this.vulkanImage.width;
+      int height = this.vulkanImage.height;
+      if (this.internalFormat == 6407 && this.vulkanImage.format == 37) {
+         ByteBuffer RGBA_buffer = GlUtil.RGBtoRGBA_buffer(pixels);
+         this.vulkanImage.uploadSubTextureAsync(0, width, height, 0, 0, 0, 0, 0, RGBA_buffer);
+         MemoryUtil.memFree(RGBA_buffer);
+      } else {
+         this.vulkanImage.uploadSubTextureAsync(0, width, height, 0, 0, 0, 0, 0, pixels);
+      }
+   }
 
-        if (needsUpdate) {
-            allocateImage(width, height, vkFormat);
-            updateSampler();
+   void generateMipmaps() {
+      ImageUtil.generateMipmaps(this.vulkanImage);
+   }
 
-            needsUpdate = false;
-        }
-    }
+   void setMaxLevel(int l) {
+      if (l < 0) {
+         throw new IllegalStateException("max level cannot be < 0.");
+      } else {
+         if (this.maxLevel != l) {
+            this.maxLevel = l;
+            this.needsUpdate = true;
+         }
+      }
+   }
 
-    void allocateImage(int width, int height, int vkFormat) {
-        if (this.vulkanImage != null)
-            this.vulkanImage.free();
+   void setMaxLod(int l) {
+      if (l < 0) {
+         throw new IllegalStateException("max level cannot be < 0.");
+      } else {
+         if (this.maxLod != l) {
+            this.maxLod = l;
+            this.updateSampler();
+         }
+      }
+   }
 
-        if (VulkanImage.isDepthFormat(vkFormat))
-            this.vulkanImage = VulkanImage.createDepthImage(vkFormat,
-                    width, height,
-                    VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
-                    false, true);
-        else
-            this.vulkanImage = new VulkanImage.Builder(width, height)
-                    .setMipLevels(maxLevel + 1)
-                    .setFormat(vkFormat)
-                    .addUsage(VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT)
-                    .createVulkanImage();
-
-        VTextureSelector.bindTexture(this.vulkanImage);
-    }
-
-    void updateSampler() {
-        if (vulkanImage == null)
+   void setMagFilter(int v) {
+      switch (v) {
+         case 9728:
+         case 9729:
+            this.magFilter = v;
+            this.updateSampler();
             return;
+         default:
+            throw new IllegalArgumentException("illegal mag filter value: " + v);
+      }
+   }
 
-        int addressMode = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-        int vkMagFilter, vkMinFilter, mipmapMode;
+   void setMinFilter(int v) {
+      switch (v) {
+         case 9728:
+         case 9729:
+         case 9984:
+         case 9985:
+         case 9986:
+         case 9987:
+            this.minFilter = v;
+            this.updateSampler();
+            return;
+         default:
+            throw new IllegalArgumentException("illegal min filter value: " + v);
+      }
+   }
 
-        switch (minFilter) {
-            case GL11.GL_LINEAR_MIPMAP_LINEAR, GL11.GL_LINEAR -> {
-                vkMinFilter = VK_FILTER_LINEAR; mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-            }
-            case GL11.GL_LINEAR_MIPMAP_NEAREST -> {
-                vkMinFilter = VK_FILTER_LINEAR; mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
-            }
-            case GL11.GL_NEAREST_MIPMAP_NEAREST, GL11.GL_NEAREST -> {
-                vkMinFilter = VK_FILTER_NEAREST; mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
-            }
-            case GL11.GL_NEAREST_MIPMAP_LINEAR -> {
-                vkMinFilter = VK_FILTER_NEAREST; mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-            }
-            default -> throw new IllegalStateException("Unexpected min filter value: %d".formatted(minFilter));
-        }
+   public VulkanImage getVulkanImage() {
+      return this.vulkanImage;
+   }
 
-        vkMagFilter = switch (magFilter) {
-            case GL11.GL_LINEAR -> VK_FILTER_LINEAR;
-            case GL11.GL_NEAREST -> VK_FILTER_NEAREST;
-            default -> throw new IllegalStateException("Unexpected mag filter value: %d".formatted(magFilter));
-        };
-
-        long sampler = SamplerManager.getSampler(addressMode, addressMode, vkMinFilter, vkMagFilter, mipmapMode, maxLod, false, 0, -1);
-
-        vulkanImage.setSampler(sampler);
-    }
-
-    private void uploadImage(ByteBuffer pixels) {
-        int width = this.vulkanImage.width;
-        int height = this.vulkanImage.height;
-
-        if (internalFormat == GL11.GL_RGB && vulkanImage.format == VK_FORMAT_R8G8B8A8_UNORM) {
-            ByteBuffer RGBA_buffer = GlUtil.RGBtoRGBA_buffer(pixels);
-            this.vulkanImage.uploadSubTextureAsync(0, width, height, 0, 0, 0, 0, 0, RGBA_buffer);
-            MemoryUtil.memFree(RGBA_buffer);
-        } else
-            this.vulkanImage.uploadSubTextureAsync(0, width, height, 0, 0, 0, 0, 0, pixels);
-
-    }
-
-    void generateMipmaps() {
-        //TODO test
-        ImageUtil.generateMipmaps(vulkanImage);
-    }
-
-    void setMaxLevel(int l) {
-        if (l < 0)
-            throw new IllegalStateException("max level cannot be < 0.");
-
-        if (maxLevel != l) {
-            maxLevel = l;
-            needsUpdate = true;
-        }
-    }
-
-    void setMaxLod(int l) {
-        if (l < 0)
-            throw new IllegalStateException("max level cannot be < 0.");
-
-        if (maxLod != l) {
-            maxLod = l;
-            updateSampler();
-        }
-    }
-
-    void setMagFilter(int v) {
-        switch (v) {
-            case GL11.GL_LINEAR, GL11.GL_NEAREST -> {
-            }
-
-            default -> throw new IllegalArgumentException("illegal mag filter value: " + v);
-        }
-
-        this.magFilter = v;
-        updateSampler();
-    }
-
-    void setMinFilter(int v) {
-        switch (v) {
-            case GL11.GL_LINEAR, GL11.GL_NEAREST,
-                 GL11.GL_LINEAR_MIPMAP_LINEAR, GL11.GL_NEAREST_MIPMAP_LINEAR,
-                 GL11.GL_LINEAR_MIPMAP_NEAREST, GL11.GL_NEAREST_MIPMAP_NEAREST -> {
-            }
-
-            default -> throw new IllegalArgumentException("illegal min filter value: " + v);
-        }
-
-        this.minFilter = v;
-        updateSampler();
-    }
-
-    public VulkanImage getVulkanImage() {
-        return vulkanImage;
-    }
-
-    public void setVulkanImage(VulkanImage vulkanImage) {
-        this.vulkanImage = vulkanImage;
-    }
+   public void setVulkanImage(VulkanImage vulkanImage) {
+      this.vulkanImage = vulkanImage;
+   }
 }

@@ -1,5 +1,8 @@
 package net.vulkanmod.render.chunk.build;
 
+import java.util.Arrays;
+import java.util.Map;
+import java.util.function.Function;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -21,226 +24,212 @@ import net.vulkanmod.render.chunk.build.color.TintCache;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Arrays;
-import java.util.Map;
-import java.util.function.Function;
-
 public class RenderRegion implements BlockAndTintGetter {
-    public static final int WIDTH = 3;
-    public static final int SIZE = WIDTH * WIDTH * WIDTH;
+   public static final int WIDTH = 3;
+   public static final int SIZE = 27;
+   public static final int BOUNDARY_BLOCK_WIDTH = 2;
+   public static final int REGION_BLOCK_WIDTH = 20;
+   public static final int BLOCK_COUNT = 8000;
+   public static final BlockState AIR_BLOCK_STATE = Blocks.AIR.defaultBlockState();
+   private final int minSecX;
+   private final int minSecY;
+   private final int minSecZ;
+   private final int minX;
+   private final int minY;
+   private final int minZ;
+   private final int maxX;
+   private final int maxY;
+   private final int maxZ;
+   private final Level level;
+   private final int blendRadius;
+   private final it.unimi.dsi.fastutil.longs.Long2ObjectFunction<net.neoforged.neoforge.client.model.data.ModelData> modelDataSnapshot;
+   private final PalettedContainer<BlockState>[] blockDataContainers;
+   private final BlockState[] blockData;
+   private final DataLayer[][] lightData;
+   private BiomeData biomeData;
+   private TintCache tintCache;
+   private final Map<BlockPos, BlockEntity> blockEntityMap;
+   private final Function<BlockPos, BlockState> blockStateGetter;
 
-    public static final int BOUNDARY_BLOCK_WIDTH = 2;
-    public static final int REGION_BLOCK_WIDTH = 16 + BOUNDARY_BLOCK_WIDTH * 2;
-    public static final int BLOCK_COUNT = REGION_BLOCK_WIDTH * REGION_BLOCK_WIDTH * REGION_BLOCK_WIDTH;
+   RenderRegion(
+      Level level,
+      int x,
+      int y,
+      int z,
+      PalettedContainer<BlockState>[] blockData,
+      DataLayer[][] lightData,
+      BiomeData biomeData,
+      Map<BlockPos, BlockEntity> blockEntityMap
+   ) {
+      this.level = level;
+      var manager = level.getModelDataManager();
+      this.modelDataSnapshot = manager == null ? net.neoforged.neoforge.client.model.data.ModelDataManager.EMPTY_SNAPSHOT
+         : manager.snapshotSectionRegion(x - 1, y - 1, z - 1, x + 1, y + 1, z + 1);
 
-    public static final BlockState AIR_BLOCK_STATE = Blocks.AIR.defaultBlockState();
+      this.minSecX = x - 1;
+      this.minSecY = y - 1;
+      this.minSecZ = z - 1;
+      this.minX = (this.minSecX << 4) + 16 - 2;
+      this.minZ = (this.minSecZ << 4) + 16 - 2;
+      this.minY = (this.minSecY << 4) + 16 - 2;
+      this.maxX = this.minX + 20;
+      this.maxZ = this.minZ + 20;
+      this.maxY = this.minY + 20;
+      this.blockDataContainers = blockData;
+      this.lightData = lightData;
+      this.biomeData = biomeData;
+      this.blockEntityMap = blockEntityMap;
+      this.blockData = new BlockState[8000];
+      this.blockStateGetter = level.isDebug() ? this::debugBlockState : this::defaultBlockState;
+      this.blendRadius = (Integer)Minecraft.getInstance().options.biomeBlendRadius().get();
+   }
 
-    private final int minSecX, minSecY, minSecZ;
-    private final int minX, minY, minZ;
-    private final int maxX, maxY, maxZ;
-    private final Level level;
-    private final int blendRadius;
+   public void loadBlockStates() {
+      Arrays.fill(this.blockData, Blocks.AIR.defaultBlockState());
 
-    private final PalettedContainer<BlockState>[] blockDataContainers;
-    private final BlockState[] blockData;
-    private final DataLayer[][] lightData;
-
-    private BiomeData biomeData;
-    private TintCache tintCache;
-
-    private final Map<BlockPos, BlockEntity> blockEntityMap;
-
-    private final Function<BlockPos, BlockState> blockStateGetter;
-
-    RenderRegion(Level level, int x, int y, int z, PalettedContainer<BlockState>[] blockData, DataLayer[][] lightData,
-                 BiomeData biomeData, Map<BlockPos, BlockEntity> blockEntityMap) {
-        this.level = level;
-
-        this.minSecX = x - 1;
-        this.minSecY = y - 1;
-        this.minSecZ = z - 1;
-        this.minX = (minSecX << 4) + 16 - BOUNDARY_BLOCK_WIDTH;
-        this.minZ = (minSecZ << 4) + 16 - BOUNDARY_BLOCK_WIDTH;
-        this.minY = (minSecY << 4) + 16 - BOUNDARY_BLOCK_WIDTH;
-        this.maxX = minX + REGION_BLOCK_WIDTH;
-        this.maxZ = minZ + REGION_BLOCK_WIDTH;
-        this.maxY = minY + REGION_BLOCK_WIDTH;
-
-        this.blockDataContainers = blockData;
-        this.lightData = lightData;
-        this.biomeData = biomeData;
-        this.blockEntityMap = blockEntityMap;
-
-        this.blockData = new BlockState[BLOCK_COUNT];
-
-        this.blockStateGetter = level.isDebug() ? this::debugBlockState : this::defaultBlockState;
-
-        this.blendRadius = Minecraft.getInstance().options.biomeBlendRadius().get();
-    }
-
-    public void loadBlockStates() {
-        Arrays.fill(blockData, Blocks.AIR.defaultBlockState());
-
-        for (int x = 0; x <= 2; ++x) {
-            for (int z = 0; z <= 2; ++z) {
-                for (int y = 0; y <= 2; ++y) {
-                    final int idx = getSectionIdx(x, y, z);
-
-                    PalettedContainer<BlockState> container = blockDataContainers[idx];
-
-                    if (container == null)
-                        continue;
-
-                    int absBlockX = (x + minSecX) << 4;
-                    int absBlockY = (y + minSecY) << 4;
-                    int absBlockZ = (z + minSecZ) << 4;
-
-                    int tMinX = Math.max(minX, absBlockX);
-                    int tMinY = Math.max(minY, absBlockY);
-                    int tMinZ = Math.max(minZ, absBlockZ);
-
-                    int tMaxX = Math.min(maxX, absBlockX + 16);
-                    int tMaxY = Math.min(maxY, absBlockY + 16);
-                    int tMaxZ = Math.min(maxZ, absBlockZ + 16);
-
-                    loadSectionBlockStates(container, blockData,
-                                           tMinX, tMinY, tMinZ, tMaxX, tMaxY, tMaxZ);
-
-                }
+      for (int x = 0; x <= 2; x++) {
+         for (int z = 0; z <= 2; z++) {
+            for (int y = 0; y <= 2; y++) {
+               int idx = this.getSectionIdx(x, y, z);
+               PalettedContainer<BlockState> container = this.blockDataContainers[idx];
+               if (container != null) {
+                  int absBlockX = x + this.minSecX << 4;
+                  int absBlockY = y + this.minSecY << 4;
+                  int absBlockZ = z + this.minSecZ << 4;
+                  int tMinX = Math.max(this.minX, absBlockX);
+                  int tMinY = Math.max(this.minY, absBlockY);
+                  int tMinZ = Math.max(this.minZ, absBlockZ);
+                  int tMaxX = Math.min(this.maxX, absBlockX + 16);
+                  int tMaxY = Math.min(this.maxY, absBlockY + 16);
+                  int tMaxZ = Math.min(this.maxZ, absBlockZ + 16);
+                  this.loadSectionBlockStates(container, this.blockData, tMinX, tMinY, tMinZ, tMaxX, tMaxY, tMaxZ);
+               }
             }
-        }
-    }
+         }
+      }
+   }
 
-    void loadSectionBlockStates(PalettedContainer<BlockState> container, BlockState[] blockStates,
-                                int minX, int minY, int minZ, int maxX, int maxY, int maxZ) {
-
-        for (int y = minY; y < maxY; ++y) {
-            for (int z = minZ; z < maxZ; ++z) {
-                for (int x = minX; x < maxX; ++x) {
-                    final int idx = getBlockIdx(x - this.minX, y - this.minY, z - this.minZ);
-
-                    blockStates[idx] = container != null ?
-                            container.get(x & 15, y & 15, z & 15)
-                            : Blocks.AIR.defaultBlockState();
-                }
+   void loadSectionBlockStates(PalettedContainer<BlockState> container, BlockState[] blockStates, int minX, int minY, int minZ, int maxX, int maxY, int maxZ) {
+      for (int y = minY; y < maxY; y++) {
+         for (int z = minZ; z < maxZ; z++) {
+            for (int x = minX; x < maxX; x++) {
+               int idx = this.getBlockIdx(x - this.minX, y - this.minY, z - this.minZ);
+               blockStates[idx] = container != null ? (BlockState)container.get(x & 15, y & 15, z & 15) : Blocks.AIR.defaultBlockState();
             }
-        }
-    }
+         }
+      }
+   }
 
-    public void initTintCache(TintCache tintCache) {
-        this.tintCache = tintCache;
-        this.tintCache.init(biomeData, blendRadius, minSecX + 1, minSecY + 1, minSecZ + 1);
-    }
+   public void initTintCache(TintCache tintCache) {
+      this.tintCache = tintCache;
+      this.tintCache.init(this.biomeData, this.blendRadius, this.minSecX + 1, this.minSecY + 1, this.minSecZ + 1);
+   }
 
-    public BlockState getBlockState(BlockPos blockPos) {
-        return blockStateGetter.apply(blockPos);
-    }
+   public BlockState getBlockState(BlockPos blockPos) {
+      return this.blockStateGetter.apply(blockPos);
+   }
 
-    public FluidState getFluidState(BlockPos blockPos) {
-        return this.getBlockState(blockPos).getFluidState();
-    }
+   public FluidState getFluidState(BlockPos blockPos) {
+      return this.getBlockState(blockPos).getFluidState();
+   }
 
-    public float getShade(Direction direction, boolean bl) {
-        return this.level.getShade(direction, bl);
-    }
+   public float getShade(Direction direction, boolean bl) {
+      return this.level.getShade(direction, bl);
+   }
 
-    public LevelLightEngine getLightEngine() {
-        return this.level.getLightEngine();
-    }
+   public LevelLightEngine getLightEngine() {
+      return this.level.getLightEngine();
+   }
 
-    public int getBrightness(LightLayer lightLayer, BlockPos blockPos) {
-        if (outsideRegion(blockPos.getX(), blockPos.getY(), blockPos.getZ())) {
-            return 0;
-        }
+   public int getBrightness(LightLayer lightLayer, BlockPos blockPos) {
+      if (this.outsideRegion(blockPos.getX(), blockPos.getY(), blockPos.getZ())) {
+         return 0;
+      } else {
+         int secX = SectionPos.blockToSectionCoord(blockPos.getX()) - this.minSecX;
+         int secY = SectionPos.blockToSectionCoord(blockPos.getY()) - this.minSecY;
+         int secZ = SectionPos.blockToSectionCoord(blockPos.getZ()) - this.minSecZ;
+         DataLayer dataLayer = this.lightData[this.getSectionIdx(secX, secY, secZ)][lightLayer.ordinal()];
+         return dataLayer == null ? 0 : dataLayer.get(blockPos.getX() & 15, blockPos.getY() & 15, blockPos.getZ() & 15);
+      }
+   }
 
-        int secX = SectionPos.blockToSectionCoord(blockPos.getX()) - this.minSecX;
-        int secY = SectionPos.blockToSectionCoord(blockPos.getY()) - this.minSecY;
-        int secZ = SectionPos.blockToSectionCoord(blockPos.getZ()) - this.minSecZ;
+   public int getRawBrightness(BlockPos blockPos, int i) {
+      if (this.outsideRegion(blockPos.getX(), blockPos.getY(), blockPos.getZ())) {
+         return 0;
+      } else {
+         int secX = SectionPos.blockToSectionCoord(blockPos.getX()) - this.minSecX;
+         int secY = SectionPos.blockToSectionCoord(blockPos.getY()) - this.minSecY;
+         int secZ = SectionPos.blockToSectionCoord(blockPos.getZ()) - this.minSecZ;
+         DataLayer[] dataLayers = this.lightData[this.getSectionIdx(secX, secY, secZ)];
+         DataLayer skyLightLayer = dataLayers[LightLayer.SKY.ordinal()];
+         DataLayer blockLightLayer = dataLayers[LightLayer.BLOCK.ordinal()];
+         int relX = blockPos.getX() & 15;
+         int relY = blockPos.getY() & 15;
+         int relZ = blockPos.getZ() & 15;
+         int skyLight = skyLightLayer == null ? 0 : skyLightLayer.get(relX, relY, relZ) - i;
+         int blockLight = blockLightLayer == null ? 0 : blockLightLayer.get(relX, relY, relZ);
+         return Math.max(skyLight, blockLight);
+      }
+   }
 
-        DataLayer dataLayer = this.lightData[getSectionIdx(secX, secY, secZ)][lightLayer.ordinal()];
-        return dataLayer == null ? 0 : dataLayer.get(blockPos.getX() & 15, blockPos.getY() & 15, blockPos.getZ() & 15);
-    }
+   @Nullable
+   public BlockEntity getBlockEntity(@NotNull BlockPos blockPos) {
+      return this.blockEntityMap.get(blockPos);
+   }
 
-    public int getRawBrightness(BlockPos blockPos, int i) {
-        if (outsideRegion(blockPos.getX(), blockPos.getY(), blockPos.getZ())) {
-            return 0;
-        }
+   public net.neoforged.neoforge.client.model.data.ModelData getModelData(BlockPos pos) {
+      return modelDataSnapshot.get(pos.asLong());
+   }
 
-        int secX = SectionPos.blockToSectionCoord(blockPos.getX()) - this.minSecX;
-        int secY = SectionPos.blockToSectionCoord(blockPos.getY()) - this.minSecY;
-        int secZ = SectionPos.blockToSectionCoord(blockPos.getZ()) - this.minSecZ;
+   public int getBlockTint(BlockPos blockPos, ColorResolver colorResolver) {
+      return this.tintCache.getColor(blockPos, colorResolver);
+   }
 
-        DataLayer[] dataLayers = this.lightData[getSectionIdx(secX, secY, secZ)];
-        DataLayer skyLightLayer = dataLayers[LightLayer.SKY.ordinal()];
-        DataLayer blockLightLayer = dataLayers[LightLayer.BLOCK.ordinal()];
+   public int getMinBuildHeight() {
+      return this.level.getMinBuildHeight();
+   }
 
-        int relX = blockPos.getX() & 15;
-        int relY = blockPos.getY() & 15;
-        int relZ = blockPos.getZ() & 15;
+   public int getHeight() {
+      return this.level.getHeight();
+   }
 
-        int skyLight = skyLightLayer == null ? 0 : skyLightLayer.get(relX, relY, relZ) - i;
-        int blockLight = blockLightLayer == null ? 0 : blockLightLayer.get(relX, relY, relZ);
-        return Math.max(skyLight, blockLight);
-    }
+   public int getSectionIdx(int secX, int secY, int secZ) {
+      return 3 * (3 * secY + secZ) + secX;
+   }
 
-    @Nullable
-    public BlockEntity getBlockEntity(@NotNull BlockPos blockPos) {
-        return this.blockEntityMap.get(blockPos);
-    }
+   public int getBlockIdx(int x, int y, int z) {
+      return 20 * (20 * y + z) + x;
+   }
 
-    public int getBlockTint(BlockPos blockPos, ColorResolver colorResolver) {
-        return tintCache.getColor(blockPos, colorResolver);
-    }
+   public boolean outsideRegion(int x, int y, int z) {
+      return x < this.minX || x >= this.maxX || y < this.minY || y >= this.maxY || z < this.minZ || z >= this.maxZ;
+   }
 
-    public int getMinY() {
-        return this.level.getMinY();
-    }
+   public BlockState defaultBlockState(BlockPos blockPos) {
+      int x = blockPos.getX();
+      int y = blockPos.getY();
+      int z = blockPos.getZ();
+      if (this.outsideRegion(x, y, z)) {
+         return AIR_BLOCK_STATE;
+      } else {
+         x -= this.minX;
+         y -= this.minY;
+         z -= this.minZ;
+         return this.blockData[this.getBlockIdx(x, y, z)];
+      }
+   }
 
-    public int getHeight() {
-        return this.level.getHeight();
-    }
+   public BlockState debugBlockState(BlockPos blockPos) {
+      int x = blockPos.getX();
+      int y = blockPos.getY();
+      int z = blockPos.getZ();
+      BlockState blockState = null;
+      if (y == 60) {
+         blockState = Blocks.BARRIER.defaultBlockState();
+      } else if (y == 70) {
+         blockState = DebugLevelSource.getBlockStateFor(x, z);
+      }
 
-    public int getSectionIdx(int secX, int secY, int secZ) {
-        return WIDTH * ((WIDTH * secY) + secZ) + secX;
-    }
-
-    public int getBlockIdx(int x, int y, int z) {
-        return REGION_BLOCK_WIDTH * ((REGION_BLOCK_WIDTH * y) + z) + x;
-    }
-
-    public boolean outsideRegion(int x, int y, int z) {
-        return x < minX || x >= maxX || y < minY || y >= maxY || z < minZ || z >= maxZ;
-    }
-
-    public BlockState defaultBlockState(BlockPos blockPos) {
-        int x = blockPos.getX();
-        int y = blockPos.getY();
-        int z = blockPos.getZ();
-
-        if (outsideRegion(x, y, z)) {
-            return AIR_BLOCK_STATE;
-        }
-
-        x -= minX;
-        y -= minY;
-        z -= minZ;
-
-        return blockData[getBlockIdx(x, y, z)];
-    }
-
-    public BlockState debugBlockState(BlockPos blockPos) {
-        int x = blockPos.getX();
-        int y = blockPos.getY();
-        int z = blockPos.getZ();
-
-        BlockState blockState = null;
-        if (y == 60) {
-            blockState = Blocks.BARRIER.defaultBlockState();
-        }
-        else if (y == 70) {
-            blockState = DebugLevelSource.getBlockStateFor(x, z);
-        }
-
-        return blockState == null ? Blocks.AIR.defaultBlockState() : blockState;
-    }
+      return blockState == null ? Blocks.AIR.defaultBlockState() : blockState;
+   }
 }

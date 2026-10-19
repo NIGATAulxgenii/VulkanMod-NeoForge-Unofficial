@@ -1,116 +1,106 @@
 package net.vulkanmod.config;
 
-import net.minecraft.util.Util;
+import net.minecraft.Util;
+import net.minecraft.Util.OS;
+import net.vulkanmod.Initializer;
 import org.apache.commons.lang3.SystemUtils;
 import org.lwjgl.glfw.GLFW;
 
-import static net.vulkanmod.Initializer.CONFIG;
-import static net.vulkanmod.Initializer.LOGGER;
-import static org.lwjgl.glfw.GLFW.*;
-
 public abstract class Platform {
-    public static final Util.OS OS = Util.getPlatform();
-    private static int activePlat;
-    private static String activeDE;
+   public static final OS OS = Util.getPlatform();
+   private static int activePlat;
+   private static String activeDE;
 
-    public static void init() {
-        activePlat = getSupportedPlat();
-        activeDE = determineDE();
+   public static void init() {
+      activePlat = getSupportedPlat();
+      activeDE = determineDE();
+      GLFW.glfwInitHint(327683, activePlat);
+      Initializer.LOGGER.info("Selecting Platform: {}", getStringFromPlat());
+      Initializer.LOGGER.info("GLFW: {}", GLFW.glfwGetVersionString());
+      GLFW.glfwInit();
+   }
 
-        GLFW.glfwInitHint(GLFW_PLATFORM, activePlat);
-        LOGGER.info("Selecting Platform: {}", getStringFromPlat());
-        LOGGER.info("GLFW: {}", GLFW.glfwGetVersionString());
-        GLFW.glfwInit();
-    }
+   private static int determineLinuxDisplayServer() {
+      String xdgSessionType = System.getenv("XDG_SESSION_TYPE");
+      if (xdgSessionType == null) {
+         return 393216;
+      } else {
+         return switch (xdgSessionType) {
+            case "wayland" -> Initializer.CONFIG.useWayland ? 393219 : 393220;
+            case "x11" -> 393220;
+            default -> 393216;
+         };
+      }
+   }
 
-    // Actually detect the currently active Display Server (if both Wayland and X11 are present on the system and/or GLFW is compiled to support both)
-    private static int determineLinuxDisplayServer() {
-        // Return Null platform if not on Linux (i.e. no X11 or Wayland)
-        String xdgSessionType = System.getenv("XDG_SESSION_TYPE");
-        if (xdgSessionType == null) return GLFW_ANY_PLATFORM; // Likely Android
-        return switch (xdgSessionType) {
-            case "wayland" -> {
-                if (CONFIG.useWayland) {
-                    yield GLFW_PLATFORM_WAYLAND;
-                }
-                else {
-                    yield GLFW_PLATFORM_X11;
-                }
-            }
-            case "x11" -> GLFW_PLATFORM_X11;
-            default -> GLFW_ANY_PLATFORM; //Either unknown Platform or Display Server
-        };
-    }
+   private static int getSupportedPlat() {
+      if (SystemUtils.IS_OS_WINDOWS) {
+         return 393217;
+      } else if (SystemUtils.IS_OS_MAC_OSX) {
+         return 393218;
+      } else {
+         return SystemUtils.IS_OS_LINUX ? determineLinuxDisplayServer() : 393216;
+      }
+   }
 
-    private static int getSupportedPlat() {
-        //Switch statement would be ideal, but couldn't find a good way of implementing it, so fell back to basic if statements/branches
-        if (SystemUtils.IS_OS_WINDOWS) return GLFW_PLATFORM_WIN32;
-        if (SystemUtils.IS_OS_MAC_OSX) return GLFW_PLATFORM_COCOA;
-        if (SystemUtils.IS_OS_LINUX) return determineLinuxDisplayServer(); //Linux Or Android
+   private static String getStringFromPlat() {
+      return switch (activePlat) {
+         case 393216 -> "ANDROID";
+         case 393217 -> "WIN32";
+         case 393218 -> "MACOS";
+         case 393219 -> "WAYLAND";
+         case 393220 -> "X11";
+         default -> throw new IllegalStateException("Unexpected value: " + activePlat);
+      };
+   }
 
-        return GLFW_ANY_PLATFORM; //Unknown platform
-    }
+   private static String determineDE() {
+      String xdgSessionDesktop = System.getenv("XDG_SESSION_DESKTOP");
+      String xdgCurrentDesktop = System.getenv("XDG_CURRENT_DESKTOP");
+      if (xdgSessionDesktop != null) {
+         return xdgSessionDesktop.toLowerCase();
+      } else {
+         return xdgCurrentDesktop != null ? xdgCurrentDesktop.toLowerCase() : "N/A";
+      }
+   }
 
-    private static String getStringFromPlat() {
-        return switch (Platform.activePlat) {
-            case GLFW_PLATFORM_WIN32 -> "WIN32";
-            case GLFW_PLATFORM_WAYLAND -> "WAYLAND";
-            case GLFW_PLATFORM_X11 -> "X11";
-            case GLFW_PLATFORM_COCOA -> "MACOS";
-            case GLFW_ANY_PLATFORM -> "ANDROID";
-            default -> throw new IllegalStateException("Unexpected value: " + Platform.activePlat);
-        };
-    }
+   public static boolean isWindows() {
+      return OS == net.minecraft.Util.OS.LINUX;
+   }
 
-    private static String determineDE() {
-        String xdgSessionDesktop = System.getenv("XDG_SESSION_DESKTOP");
-        String xdgCurrentDesktop = System.getenv("XDG_CURRENT_DESKTOP");
-        if (xdgSessionDesktop != null)
-            return xdgSessionDesktop.toLowerCase();
-        if (xdgCurrentDesktop != null)
-            return xdgCurrentDesktop.toLowerCase();
-        return "N/A";
-    }
+   public static boolean isLinux() {
+      return OS == net.minecraft.Util.OS.LINUX;
+   }
 
-    public static boolean isWindows() {
-        return OS == Util.OS.LINUX;
-    }
+   public static boolean isMacOS() {
+      return OS == net.minecraft.Util.OS.OSX;
+   }
 
-    public static boolean isLinux() {
-        return OS == Util.OS.LINUX;
-    }
+   public static int getActivePlat() {
+      return activePlat;
+   }
 
-    public static boolean isMacOS() {
-        return OS == Util.OS.OSX;
-    }
+   public static boolean isAndroid() {
+      return activePlat == 393216;
+   }
 
-    public static int getActivePlat() {
-        return activePlat;
-    }
+   public static boolean isWayLand() {
+      return activePlat == 393219;
+   }
 
-    public static boolean isAndroid() {
-        return activePlat == GLFW_ANY_PLATFORM;
-    }
+   public static boolean isX11() {
+      return activePlat == 393220;
+   }
 
-    //Allows platform specific checks to be handled
-    public static boolean isWayLand() {
-        return activePlat == GLFW_PLATFORM_WAYLAND;
-    }
+   public static boolean isGnome() {
+      return activeDE.contains("gnome");
+   }
 
-    public static boolean isX11() {
-        return activePlat == GLFW_PLATFORM_X11;
-    }
+   public static boolean isWeston() {
+      return activeDE.contains("weston");
+   }
 
-    //Desktop Environment Names: https://wiki.archlinux.org/title/Xdg-utils#Usage
-    public static boolean isGnome() {
-        return activeDE.contains("gnome");
-    }
-
-    public static boolean isWeston() {
-        return activeDE.contains("weston");
-    }
-
-    public static boolean isGeneric() {
-        return activeDE.contains("generic");
-    }
+   public static boolean isGeneric() {
+      return activeDE.contains("generic");
+   }
 }

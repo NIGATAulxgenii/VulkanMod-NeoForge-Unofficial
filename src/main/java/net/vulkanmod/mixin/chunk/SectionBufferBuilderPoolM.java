@@ -7,9 +7,8 @@ import org.spongepowered.asm.mixin.injection.ModifyVariable;
 
 @Mixin(SectionBufferBuilderPool.class)
 public class SectionBufferBuilderPoolM {
-
-	@ModifyVariable(method = "allocate", at = @At("STORE"), ordinal = 1)
-	private static int skipAllocation(int value) {
-		return 0;
-	}
+   @ModifyVariable(method = "allocate", at = @At("STORE"), ordinal = 1)
+   private static int skipAllocation(int value) {
+      return 0;
+   }
 }

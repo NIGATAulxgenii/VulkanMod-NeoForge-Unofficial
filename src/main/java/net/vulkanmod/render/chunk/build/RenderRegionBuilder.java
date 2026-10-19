@@ -1,10 +1,13 @@
 package net.vulkanmod.render.chunk.build;
 
 import it.unimi.dsi.fastutil.longs.Long2ReferenceLinkedOpenHashMap;
+import java.util.Map;
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.SectionPos;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LightLayer;
+import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.DataLayer;
 import net.minecraft.world.level.chunk.LevelChunk;
@@ -14,113 +17,100 @@ import net.vulkanmod.interfaces.biome.BiomeManagerExtended;
 import net.vulkanmod.render.chunk.build.biome.BiomeData;
 
 public class RenderRegionBuilder {
-    private static final DataLayer DEFAULT_SKY_LIGHT_DATA_LAYER = new DataLayer(15);
-    private static final DataLayer DEFAULT_BLOCK_LIGHT_DATA_LAYER = new DataLayer(0);
+   private static final DataLayer DEFAULT_SKY_LIGHT_DATA_LAYER = new DataLayer(15);
+   private static final DataLayer DEFAULT_BLOCK_LIGHT_DATA_LAYER = new DataLayer(0);
+   private static final int MAX_CACHE_ENTRIES = 256;
+   private final Long2ReferenceLinkedOpenHashMap<LevelChunk> levelChunkCache = new Long2ReferenceLinkedOpenHashMap(256);
 
-    private static final int MAX_CACHE_ENTRIES = 256;
-    private final Long2ReferenceLinkedOpenHashMap<LevelChunk> levelChunkCache = new Long2ReferenceLinkedOpenHashMap<>(MAX_CACHE_ENTRIES);
+   public RenderRegion createRegion(Level level, int secX, int secY, int secZ) {
+      LevelChunk levelChunk = this.getLevelChunk(level, secX, secZ);
+      LevelChunkSection[] sections = levelChunk.getSections();
+      LevelChunkSection section = sections[level.getSectionIndexFromSectionY(secY)];
+      if (section != null && !section.hasOnlyAir()) {
+         Map<BlockPos, BlockEntity> blockEntityMap = levelChunk.getBlockEntities();
+         int minSecX = secX - 1;
+         int minSecZ = secZ - 1;
+         int minSecY = secY - 1;
+         int maxSecX = secX + 1;
+         int maxSecZ = secZ + 1;
+         int maxSecY = secY + 1;
+         PalettedContainer<BlockState>[] blockData = new PalettedContainer[27];
+         DataLayer[][] lightData = new DataLayer[27][2];
+         long biomeZoomSeed = BiomeManagerExtended.of(level.getBiomeManager()).getBiomeZoomSeed();
+         BiomeData biomeData = new BiomeData(biomeZoomSeed, minSecX, minSecY, minSecZ);
+         int minHeightSec = level.getMinBuildHeight() >> 4;
 
-    public RenderRegion createRegion(Level level, int secX, int secY, int secZ) {
-        LevelChunk levelChunk = getLevelChunk(level, secX, secZ);
-        var sections = levelChunk.getSections();
-        LevelChunkSection section = sections[level.getSectionIndexFromSectionY(secY)];
+         for (int x = minSecX; x <= maxSecX; x++) {
+            for (int z = minSecZ; z <= maxSecZ; z++) {
+               LevelChunk levelChunk1 = this.getLevelChunk(level, x, z);
+               sections = levelChunk1.getSections();
 
-        if (section == null || section.hasOnlyAir())
-            return null;
-
-        var blockEntityMap = levelChunk.getBlockEntities();
-
-        int minSecX = secX - 1;
-        int minSecZ = secZ - 1;
-        int minSecY = secY - 1;
-        int maxSecX = secX + 1;
-        int maxSecZ = secZ + 1;
-        int maxSecY = secY + 1;
-
-        PalettedContainer<BlockState>[] blockData = new PalettedContainer[RenderRegion.SIZE];
-
-        DataLayer[][] lightData = new DataLayer[RenderRegion.SIZE][2 /* Light types */];
-
-        long biomeZoomSeed = BiomeManagerExtended.of(level.getBiomeManager()).getBiomeZoomSeed();
-        BiomeData biomeData = new BiomeData(biomeZoomSeed, minSecX, minSecY, minSecZ);
-
-        final int minHeightSec = level.getMinY() >> 4;
-        for (int x = minSecX; x <= maxSecX; ++x) {
-            for (int z = minSecZ; z <= maxSecZ; ++z) {
-                LevelChunk levelChunk1 = getLevelChunk(level, x, z);
-                sections = levelChunk1.getSections();
-
-                for (int y = minSecY; y <= maxSecY; ++y) {
-                    int sectionIdx = y - minHeightSec;
-                    section = sectionIdx >= 0 && sectionIdx < sections.length ? sections[sectionIdx] : null;
-
-                    final int relX = (x - minSecX), relY = (y - minSecY), relZ = (z - minSecZ);
-                    final int idx = (relY * RenderRegion.WIDTH + relZ) * RenderRegion.WIDTH + relX;
-
-                    PalettedContainer<BlockState> values = section == null || section.hasOnlyAir() ? null : section.getStates().copy();
-
-                    blockData[idx] = values;
-
-                    SectionPos pos = SectionPos.of(x, y, z);
-                    DataLayer[] dataLayers = getSectionDataLayers(level, pos);
-
-                    lightData[idx] = dataLayers;
-
-                    biomeData.getBiomeData(level, section, relX, relY, relZ);
-                }
+               for (int y = minSecY; y <= maxSecY; y++) {
+                  int sectionIdx = y - minHeightSec;
+                  section = sectionIdx >= 0 && sectionIdx < sections.length ? sections[sectionIdx] : null;
+                  int relX = x - minSecX;
+                  int relY = y - minSecY;
+                  int relZ = z - minSecZ;
+                  int idx = (relY * 3 + relZ) * 3 + relX;
+                  PalettedContainer<BlockState> values = section != null && !section.hasOnlyAir() ? section.getStates().copy() : null;
+                  blockData[idx] = values;
+                  SectionPos pos = SectionPos.of(x, y, z);
+                  DataLayer[] dataLayers = this.getSectionDataLayers(level, pos);
+                  lightData[idx] = dataLayers;
+                  biomeData.getBiomeData(level, section, relX, relY, relZ);
+               }
             }
-        }
+         }
 
-        return new RenderRegion(level, secX, secY, secZ, blockData, lightData, biomeData, blockEntityMap);
-    }
+         return new RenderRegion(level, secX, secY, secZ, blockData, lightData, biomeData, blockEntityMap);
+      } else {
+         return null;
+      }
+   }
 
-    private DataLayer[] getSectionDataLayers(Level level, SectionPos pos) {
-        DataLayer[] dataLayers = new DataLayer[2];
+   private DataLayer[] getSectionDataLayers(Level level, SectionPos pos) {
+      DataLayer[] dataLayers = new DataLayer[2];
+      DataLayer blockDataLayer = level.getLightEngine().getLayerListener(LightLayer.BLOCK).getDataLayerData(pos);
+      if (blockDataLayer == null) {
+         blockDataLayer = DEFAULT_BLOCK_LIGHT_DATA_LAYER;
+      }
 
-        DataLayer blockDataLayer;
-        blockDataLayer = level.getLightEngine().getLayerListener(LightLayer.BLOCK).getDataLayerData(pos);
+      dataLayers[LightLayer.BLOCK.ordinal()] = blockDataLayer;
+      DataLayer skyDataLayer;
+      if (level.dimensionType().hasSkyLight()) {
+         skyDataLayer = level.getLightEngine().getLayerListener(LightLayer.SKY).getDataLayerData(pos);
+         if (skyDataLayer == null) {
+            skyDataLayer = DEFAULT_SKY_LIGHT_DATA_LAYER;
+         }
+      } else {
+         skyDataLayer = null;
+      }
 
-        if (blockDataLayer == null)
-            blockDataLayer = DEFAULT_BLOCK_LIGHT_DATA_LAYER;
+      dataLayers[LightLayer.SKY.ordinal()] = skyDataLayer;
+      return dataLayers;
+   }
 
-        dataLayers[LightLayer.BLOCK.ordinal()] = blockDataLayer;
+   private LevelChunk getLevelChunk(Level level, int x, int z) {
+      long l = ChunkPos.asLong(x, z);
+      LevelChunk chunk = (LevelChunk)this.levelChunkCache.getAndMoveToFirst(l);
+      if (chunk == null) {
+         chunk = level.getChunk(x, z);
 
-        DataLayer skyDataLayer;
-        if (level.dimensionType().hasSkyLight()) {
-            skyDataLayer = level.getLightEngine().getLayerListener(LightLayer.SKY).getDataLayerData(pos);
+         while (this.levelChunkCache.size() >= 256) {
+            this.levelChunkCache.removeLast();
+         }
 
-            if (skyDataLayer == null)
-                skyDataLayer = DEFAULT_SKY_LIGHT_DATA_LAYER;
-        } else
-            skyDataLayer = null;
+         this.levelChunkCache.putAndMoveToFirst(l, chunk);
+      }
 
-        dataLayers[LightLayer.SKY.ordinal()] = skyDataLayer;
+      return chunk;
+   }
 
-        return dataLayers;
-    }
+   public void remove(int x, int z) {
+      this.levelChunkCache.remove(ChunkPos.asLong(x, z));
+   }
 
-    private LevelChunk getLevelChunk(Level level, int x, int z) {
-        long l = ChunkPos.asLong(x, z);
-        LevelChunk chunk = this.levelChunkCache.getAndMoveToFirst(l);
-
-        if (chunk == null) {
-            chunk = level.getChunk(x, z);
-
-            while (levelChunkCache.size() >= MAX_CACHE_ENTRIES) {
-                levelChunkCache.removeLast();
-            }
-
-            this.levelChunkCache.putAndMoveToFirst(l, chunk);
-        }
-
-        return chunk;
-    }
-
-    public void remove(int x, int z) {
-        levelChunkCache.remove(ChunkPos.asLong(x, z));
-    }
-
-    public void clear() {
-        this.levelChunkCache.clear();
-    }
+   public void clear() {
+      this.levelChunkCache.clear();
+   }
 }

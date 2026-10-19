@@ -1,0 +1,50 @@
+package net.vulkanmod.mixin.compatibility;
+
+import com.mojang.blaze3d.shaders.Shader;
+import com.mojang.blaze3d.shaders.Uniform;
+import net.vulkanmod.gl.VkGlProgram;
+import net.vulkanmod.vulkan.Renderer;
+import net.vulkanmod.vulkan.shader.Pipeline;
+import org.spongepowered.asm.mixin.Final;
+import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Overwrite;
+import org.spongepowered.asm.mixin.Shadow;
+import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+
+@Mixin(Uniform.class)
+public class UniformM {
+   @Shadow
+   @Final
+   private Shader parent;
+
+   @Overwrite
+   public static int glGetUniformLocation(int i, CharSequence charSequence) {
+      return 1;
+   }
+
+   @Overwrite
+   public static int glGetAttribLocation(int i, CharSequence charSequence) {
+      return 0;
+   }
+
+   @Inject(method = "upload", at = @At("HEAD"), cancellable = true)
+   public void redirectUpload(CallbackInfo ci) {
+      Renderer renderer = Renderer.getInstance();
+      Pipeline boundPipeline = renderer.getBoundPipeline();
+      ci.cancel();
+      VkGlProgram program = VkGlProgram.getBoundProgram();
+      if (program != null) {
+         Pipeline pipeline = program.getPipeline();
+         if (boundPipeline == pipeline) {
+            renderer.uploadAndBindUBOs(boundPipeline);
+         }
+      }
+   }
+
+   @Inject(method = "uploadInteger", at = @At("HEAD"), cancellable = true)
+   private static void cancelUploadInteger(int i, int j, CallbackInfo ci) {
+      ci.cancel();
+   }
+}

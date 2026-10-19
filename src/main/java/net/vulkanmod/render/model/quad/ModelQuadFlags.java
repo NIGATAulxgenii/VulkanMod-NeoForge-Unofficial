@@ -3,85 +3,108 @@ package net.vulkanmod.render.model.quad;
 import net.minecraft.core.Direction;
 
 public class ModelQuadFlags {
-    /**
-     * Indicates that the quad does not fully cover the given face for the model.
-     */
-    public static final int IS_PARTIAL = 0b001;
+   public static final int IS_PARTIAL = 1;
+   public static final int IS_PARALLEL = 2;
+   public static final int IS_ALIGNED = 4;
 
-    /**
-     * Indicates that the quad is parallel to its light face.
-     */
-    public static final int IS_PARALLEL = 0b010;
+   public static boolean contains(int flags, int mask) {
+      return (flags & mask) != 0;
+   }
 
-    /**
-     * Indicates that the quad is aligned to the block grid.
-     * This flag is only set if {@link #IS_PARALLEL} is set.
-     */
-    public static final int IS_ALIGNED = 0b100;
+   public static int getQuadFlags(ModelQuadView quad, Direction face) {
+      float minX = 32.0F;
+      float minY = 32.0F;
+      float minZ = 32.0F;
+      float maxX = -32.0F;
+      float maxY = -32.0F;
+      float maxZ = -32.0F;
 
-    public static boolean contains(int flags, int mask) {
-        return (flags & mask) != 0;
-    }
+      for (int i = 0; i < 4; i++) {
+         float x = quad.getX(i);
+         float y = quad.getY(i);
+         float z = quad.getZ(i);
+         minX = Math.min(minX, x);
+         minY = Math.min(minY, y);
+         minZ = Math.min(minZ, z);
+         maxX = Math.max(maxX, x);
+         maxY = Math.max(maxY, y);
+         maxZ = Math.max(maxZ, z);
+      }
+      boolean partial = switch (face.getAxis()) {
+         case X -> minY >= 1.0E-4F || minZ >= 1.0E-4F || maxY <= 0.9999F || maxZ <= 0.9999F;
+         case Y -> minX >= 1.0E-4F || minZ >= 1.0E-4F || maxX <= 0.9999F || maxZ <= 0.9999F;
+         case Z -> minX >= 1.0E-4F || minY >= 1.0E-4F || maxX <= 0.9999F || maxY <= 0.9999F;
+         default -> throw new MatchException(null, null);
+      };
 
-    public static int getQuadFlags(ModelQuadView quad, Direction face) {
-        float minX = 32.0F;
-        float minY = 32.0F;
-        float minZ = 32.0F;
+      boolean parallel;
+      boolean var17;
+      label85: {
+         label84: {
+            parallel = switch (face.getAxis()) {
+               case X -> minX == maxX;
+               case Y -> minY == maxY;
+               case Z -> minZ == maxZ;
+               default -> throw new MatchException(null, null);
+            };
+            if (parallel) {
+               switch (face) {
+                  case DOWN:
+                     if (minY < 1.0E-4F) {
+                        break label84;
+                     }
+                     break;
+                  case UP:
+                     if (maxY > 0.9999F) {
+                        break label84;
+                     }
+                     break;
+                  case NORTH:
+                     if (minZ < 1.0E-4F) {
+                        break label84;
+                     }
+                     break;
+                  case SOUTH:
+                     if (maxZ > 0.9999F) {
+                        break label84;
+                     }
+                     break;
+                  case WEST:
+                     if (minX < 1.0E-4F) {
+                        break label84;
+                     }
+                     break;
+                  case EAST:
+                     if (maxX > 0.9999F) {
+                        break label84;
+                     }
+                     break;
+                  default:
+                     throw new MatchException(null, null);
+               }
+            }
 
-        float maxX = -32.0F;
-        float maxY = -32.0F;
-        float maxZ = -32.0F;
+            var17 = false;
+            break label85;
+         }
 
-        for (int i = 0; i < 4; ++i) {
-            float x = quad.getX(i);
-            float y = quad.getY(i);
-            float z = quad.getZ(i);
+         var17 = true;
+      }
 
-            minX = Math.min(minX, x);
-            minY = Math.min(minY, y);
-            minZ = Math.min(minZ, z);
-            maxX = Math.max(maxX, x);
-            maxY = Math.max(maxY, y);
-            maxZ = Math.max(maxZ, z);
-        }
+      boolean aligned = var17;
+      int flags = 0;
+      if (partial) {
+         flags |= 1;
+      }
 
-        boolean partial = switch (face.getAxis()) {
-            case X -> minY >= 0.0001f || minZ >= 0.0001f || maxY <= 0.9999F || maxZ <= 0.9999F;
-            case Y -> minX >= 0.0001f || minZ >= 0.0001f || maxX <= 0.9999F || maxZ <= 0.9999F;
-            case Z -> minX >= 0.0001f || minY >= 0.0001f || maxX <= 0.9999F || maxY <= 0.9999F;
-        };
+      if (parallel) {
+         flags |= 2;
+      }
 
-        boolean parallel = switch(face.getAxis()) {
-            case X -> minX == maxX;
-            case Y -> minY == maxY;
-            case Z -> minZ == maxZ;
-        };
+      if (aligned) {
+         flags |= 4;
+      }
 
-        boolean aligned = parallel && switch (face) {
-            case DOWN -> minY < 0.0001f;
-            case UP -> maxY > 0.9999F;
-            case NORTH -> minZ < 0.0001f;
-            case SOUTH -> maxZ > 0.9999F;
-            case WEST -> minX < 0.0001f;
-            case EAST -> maxX > 0.9999F;
-        };
-
-        int flags = 0;
-
-        if (partial) {
-            flags |= IS_PARTIAL;
-        }
-
-        if (parallel) {
-            flags |= IS_PARALLEL;
-        }
-
-        if (aligned) {
-            flags |= IS_ALIGNED;
-        }
-
-        return flags;
-    }
-
-
+      return flags;
+   }
 }

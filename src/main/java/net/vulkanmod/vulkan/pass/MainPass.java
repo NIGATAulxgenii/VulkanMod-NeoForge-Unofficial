@@ -1,43 +1,41 @@
 package net.vulkanmod.vulkan.pass;
 
-import com.mojang.blaze3d.textures.GpuTexture;
-import com.mojang.blaze3d.textures.GpuTextureView;
+import net.vulkanmod.gl.VkGlTexture;
 import net.vulkanmod.vulkan.framebuffer.Framebuffer;
+import net.vulkanmod.vulkan.texture.VulkanImage;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.vulkan.VkCommandBuffer;
 
 public interface MainPass {
+   void begin(VkCommandBuffer var1, MemoryStack var2);
 
-    void begin(VkCommandBuffer commandBuffer, MemoryStack stack);
+   void end(VkCommandBuffer var1);
 
-    void end(VkCommandBuffer commandBuffer);
+   void cleanUp();
 
-    void cleanUp();
+   void onResize();
 
-    void onResize();
+   default void mainTargetBindWrite() {
+   }
 
-    default void mainTargetBindWrite() {}
+   default void mainTargetUnbindWrite() {
+   }
 
-    default void mainTargetUnbindWrite() {}
+   default void rebindMainTarget() {
+   }
 
-    default void rebindMainTarget() {}
+   default void bindAsTexture() {
+   }
 
-    default void bindAsTexture() {}
+   default Framebuffer getMainFramebuffer() {
+      return null;
+   }
 
-    default Framebuffer getMainFramebuffer() {
-        return null;
-    }
+   default VkGlTexture getColorAttachment() {
+      return null;
+   }
 
-    default GpuTexture getColorAttachment() {
-        return null;
-    }
-
-    default GpuTextureView getColorAttachmentView() {
-        return null;
-    }
-
-    default GpuTexture getDepthAttachment() {
-        return null;
-    }
-
+   default VulkanImage getDepthAttachment() {
+      return null;
+   }
 }

@@ -7,9 +7,6 @@ import org.spongepowered.asm.mixin.gen.Accessor;
 
 @Mixin(Window.class)
 public interface WindowAccessor {
-
-    @Accessor
-    WindowEventHandler getEventHandler();
-
-
+   @Accessor
+   WindowEventHandler getEventHandler();
 }

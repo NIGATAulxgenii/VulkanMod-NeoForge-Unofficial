@@ -2,94 +2,95 @@ package net.vulkanmod.vulkan.memory.buffer;
 
 import it.unimi.dsi.fastutil.Stack;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.objects.ObjectListIterator;
 
 public class StagingBuffers {
-    final Stack<StagingBuffer> availableBuffers = new ObjectArrayList<>();
+   final Stack<StagingBuffer> availableBuffers = new ObjectArrayList();
+   ObjectArrayList<StagingBuffer>[] usedBuffersByFrame;
+   StagingBuffer currentBuffer;
+   boolean inFrame = false;
 
-    ObjectArrayList<StagingBuffer>[] usedBuffersByFrame;
-    StagingBuffer currentBuffer;
-    boolean inFrame = false;
+   public void updateFrameCount(int frames) {
+      if (this.usedBuffersByFrame != null) {
+         for (ObjectArrayList<StagingBuffer> bufferList : this.usedBuffersByFrame) {
+            ObjectListIterator var6 = bufferList.iterator();
 
-    public void updateFrameCount(int frames) {
-        // Here we are sure every upload has finished,
-        // every buffer can return available
-        if (usedBuffersByFrame != null) {
-            for (var bufferList : usedBuffersByFrame) {
-                for (var buffer : bufferList) {
-                    availableBuffers.push(buffer);
-                }
+            while (var6.hasNext()) {
+               StagingBuffer buffer = (StagingBuffer)var6.next();
+               this.availableBuffers.push(buffer);
             }
-        }
-        else {
-            for (int i = 0; i < frames + 1; i++) {
-                availableBuffers.push(new StagingBuffer());
-            }
-        }
+         }
+      } else {
+         for (int i = 0; i < frames + 1; i++) {
+            this.availableBuffers.push(new StagingBuffer());
+         }
+      }
 
-        currentBuffer = null;
+      this.currentBuffer = null;
+      this.usedBuffersByFrame = new ObjectArrayList[frames];
 
-        usedBuffersByFrame = new ObjectArrayList[frames];
+      for (int i = 0; i < frames; i++) {
+         this.usedBuffersByFrame[i] = new ObjectArrayList();
+      }
+   }
 
-        for (int i = 0; i < frames; i++) {
-            usedBuffersByFrame[i] = new ObjectArrayList<>();
-        }
-    }
+   public StagingBuffer getStagingBuffer() {
+      if (this.currentBuffer == null) {
+         if (this.availableBuffers.isEmpty()) {
+            this.availableBuffers.push(new StagingBuffer());
+         }
 
-    public StagingBuffer getStagingBuffer() {
-        if (currentBuffer == null) {
-            if (availableBuffers.isEmpty()) {
-                availableBuffers.push(new StagingBuffer());
-            }
+         this.currentBuffer = (StagingBuffer)this.availableBuffers.pop();
+      }
 
-            currentBuffer = availableBuffers.pop();
-        }
+      if (!this.inFrame) {
+         System.nanoTime();
+      }
 
-        if (!inFrame)
-            System.nanoTime();
+      return this.currentBuffer;
+   }
 
-        return currentBuffer;
-    }
+   public void beginFrame(int frame) {
+      ObjectArrayList<StagingBuffer> usedBuffers = this.usedBuffersByFrame[frame];
+      ObjectListIterator var3 = usedBuffers.iterator();
 
-    public void beginFrame(int frame) {
-        var usedBuffers = usedBuffersByFrame[frame];
-        for (StagingBuffer buffer : usedBuffers) {
-            buffer.reset();
-            availableBuffers.push(buffer);
-        }
+      while (var3.hasNext()) {
+         StagingBuffer buffer = (StagingBuffer)var3.next();
+         buffer.reset();
+         this.availableBuffers.push(buffer);
+      }
 
-        usedBuffers.clear();
+      usedBuffers.clear();
+      if (this.currentBuffer != null) {
+         usedBuffers.push(this.currentBuffer);
+      }
 
-        // Inter-frame buffer
-        if (currentBuffer != null) {
-            usedBuffers.push(currentBuffer);
-        }
+      if (this.availableBuffers.isEmpty()) {
+         this.availableBuffers.push(new StagingBuffer());
+      }
 
-        if (availableBuffers.isEmpty()) {
-            availableBuffers.push(new StagingBuffer());
-        }
+      this.currentBuffer = (StagingBuffer)this.availableBuffers.pop();
+      this.inFrame = true;
+   }
 
-        currentBuffer = availableBuffers.pop();
-        inFrame = true;
-    }
+   public void endFrame(int frame) {
+      this.usedBuffersByFrame[frame].push(this.currentBuffer);
+      this.currentBuffer = null;
+      this.inFrame = false;
+   }
 
-    public void endFrame(int frame) {
-        usedBuffersByFrame[frame].push(this.currentBuffer);
+   public void free() {
+      for (ObjectArrayList<StagingBuffer> bufferList : this.usedBuffersByFrame) {
+         ObjectListIterator var5 = bufferList.iterator();
 
-        currentBuffer = null;
-        inFrame = false;
-    }
+         while (var5.hasNext()) {
+            StagingBuffer buffer = (StagingBuffer)var5.next();
+            buffer.scheduleFree();
+         }
+      }
 
-    public void free() {
-        for (var bufferList : usedBuffersByFrame) {
-            for (var buffer : bufferList) {
-                buffer.scheduleFree();
-            }
-        }
-
-        while (!availableBuffers.isEmpty()) {
-            availableBuffers.pop().scheduleFree();
-        }
-    }
-
-
+      while (!this.availableBuffers.isEmpty()) {
+         ((StagingBuffer)this.availableBuffers.pop()).scheduleFree();
+      }
+   }
 }

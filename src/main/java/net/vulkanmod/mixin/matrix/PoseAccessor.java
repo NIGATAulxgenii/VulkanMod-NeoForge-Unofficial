@@ -1,12 +1,11 @@
 package net.vulkanmod.mixin.matrix;
 
-import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.blaze3d.vertex.PoseStack.Pose;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.gen.Accessor;
 
-@Mixin(PoseStack.Pose.class)
+@Mixin(Pose.class)
 public interface PoseAccessor {
-
-    @Accessor("trustedNormals")
-    boolean trustedNormals();
+   @Accessor("trustedNormals")
+   boolean trustedNormals();
 }

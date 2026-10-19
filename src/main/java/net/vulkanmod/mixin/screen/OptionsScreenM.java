@@ -14,17 +14,19 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(OptionsScreen.class)
 public class OptionsScreenM extends Screen {
+   @Shadow
+   @Final
+   private Screen lastScreen;
+   @Shadow
+   @Final
+   private Options options;
 
-    @Shadow @Final private Screen lastScreen;
+   protected OptionsScreenM(Component title) {
+      super(title);
+   }
 
-    @Shadow @Final private Options options;
-
-    protected OptionsScreenM(Component title) {
-        super(title);
-    }
-
-    @Inject(method = "method_19828", at = @At("HEAD"), cancellable = true)
-    private void injectVideoOptionScreen(CallbackInfoReturnable<Screen> cir) {
-        cir.setReturnValue(new VOptionScreen(Component.literal("Video Setting"), this));
-    }
+   @Inject(method = "lambda$init$2", at = @At("HEAD"), cancellable = true)
+   private void injectVideoOptionScreen(CallbackInfoReturnable<Screen> cir) {
+      cir.setReturnValue(new VOptionScreen(Component.literal("Video Setting"), this));
+   }
 }

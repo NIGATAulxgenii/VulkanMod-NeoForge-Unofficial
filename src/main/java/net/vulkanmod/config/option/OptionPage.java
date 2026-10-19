@@ -4,67 +4,70 @@ import net.vulkanmod.config.gui.OptionBlock;
 import net.vulkanmod.config.gui.VOptionList;
 
 public class OptionPage {
-    public final String name;
-    public OptionBlock[] optionBlocks;
-    private VOptionList optionList;
-    private int order;
+   public final String name;
+   public OptionBlock[] optionBlocks;
+   private VOptionList optionList;
+   private int order;
 
-    public OptionPage(String name, OptionBlock[] optionBlocks) {
-        this.name = name;
-        this.optionBlocks = optionBlocks;
-    }
+   public OptionPage(String name, OptionBlock[] optionBlocks) {
+      this.name = name;
+      this.optionBlocks = optionBlocks;
+   }
 
-    public void createList(int x, int y, int width, int height, int itemHeight) {
-        this.optionList = new VOptionList(x, y, width, height, itemHeight);
-        this.optionList.addAll(optionBlocks);
-    }
+   public void createList(int x, int y, int width, int height, int itemHeight) {
+      this.optionList = new VOptionList(x, y, width, height, itemHeight);
+      this.optionList.addAll(this.optionBlocks);
+   }
 
-    public VOptionList getOptionList() {
-        return this.optionList;
-    }
+   public VOptionList getOptionList() {
+      return this.optionList;
+   }
 
-    public boolean optionChanged() {
-        boolean changed = false;
-        for (var block : this.optionBlocks) {
-            for (var option : block.options()) {
-                if (option.isChanged())
-                    changed = true;
+   public boolean optionChanged() {
+      boolean changed = false;
+
+      for (OptionBlock block : this.optionBlocks) {
+         for (Option<?> option : block.options()) {
+            if (option.isChanged()) {
+               changed = true;
             }
-        }
-        return changed;
-    }
+         }
+      }
 
-    public void applyOptionChanges() {
-        for (var block : this.optionBlocks) {
-            for (var option : block.options()) {
-                if (option.isChanged()) {
-                    option.apply();
-                }
+      return changed;
+   }
+
+   public void applyOptionChanges() {
+      for (OptionBlock block : this.optionBlocks) {
+         for (Option<?> option : block.options()) {
+            if (option.isChanged()) {
+               option.apply();
             }
-        }
-    }
+         }
+      }
+   }
 
-    public void updateOptionStates() {
-        for (var block : this.optionBlocks) {
-            for (var option : block.options()) {
-                option.updateActiveState();
-            }
-        }
-    }
+   public void updateOptionStates() {
+      for (OptionBlock block : this.optionBlocks) {
+         for (Option<?> option : block.options()) {
+            option.updateActiveState();
+         }
+      }
+   }
 
-    public void resetToOriginalState() {
-        for (var block : this.optionBlocks) {
-            for (var option : block.options()) {
-                option.resetValue();
-            }
-        }
-    }
+   public void resetToOriginalState() {
+      for (OptionBlock block : this.optionBlocks) {
+         for (Option<?> option : block.options()) {
+            option.resetValue();
+         }
+      }
+   }
 
-    public void setOrder(int order) {
-        this.order = order;
-    }
+   public void setOrder(int order) {
+      this.order = order;
+   }
 
-    public int getOrder() {
-        return order;
-    }
+   public int getOrder() {
+      return this.order;
+   }
 }

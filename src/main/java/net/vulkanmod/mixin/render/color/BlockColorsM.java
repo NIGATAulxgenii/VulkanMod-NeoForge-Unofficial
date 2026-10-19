@@ -13,17 +13,16 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(BlockColors.class)
 public class BlockColorsM implements BlockColorsExtended {
+   @Unique
+   private BlockColorRegistry colorResolvers = new BlockColorRegistry();
 
-	@Unique
-	private BlockColorRegistry colorResolvers = new BlockColorRegistry();
+   @Inject(method = "register", at = @At("RETURN"))
+   private void onRegister(BlockColor blockColor, Block[] blocks, CallbackInfo ci) {
+      this.colorResolvers.register(blockColor, blocks);
+   }
 
-	@Inject(method = "register", at = @At("RETURN"))
-	private void onRegister(BlockColor blockColor, Block[] blocks, CallbackInfo ci) {
-		this.colorResolvers.register(blockColor, blocks);
-	}
-
-	@Override
-	public BlockColorRegistry getColorResolverMap() {
-		return this.colorResolvers;
-	}
+   @Override
+   public BlockColorRegistry getColorResolverMap() {
+      return this.colorResolvers;
+   }
 }

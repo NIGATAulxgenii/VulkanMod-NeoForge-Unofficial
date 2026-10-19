@@ -1,7 +1,7 @@
 package net.vulkanmod.config.api;
 
 import net.minecraft.network.chat.FormattedText;
-import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceLocation;
 import net.vulkanmod.config.api.page.VkPageOptionsBuilder;
 import net.vulkanmod.config.api.page.VkPagesBuilder;
 import net.vulkanmod.config.gui.ModSettingsEntry;
@@ -12,7 +12,7 @@ import java.util.function.Supplier;
 
 public class VkModSettingsEntryBuilder {
     private FormattedText modName;
-    private Supplier<Identifier> iconSupplier;
+    private Supplier<ResourceLocation> iconSupplier;
     private Supplier<List<OptionPage>> optionPageSupplier;
     private Runnable onApply;
     private final VkPagesBuilder pageBuilder = new VkPagesBuilder();
@@ -29,12 +29,12 @@ public class VkModSettingsEntryBuilder {
         return this;
     }
 
-    public VkModSettingsEntryBuilder setIcon(Identifier icon) {
+    public VkModSettingsEntryBuilder setIcon(ResourceLocation icon) {
         this.iconSupplier = () -> icon;
         return this;
     }
 
-    public VkModSettingsEntryBuilder setIconSupplier(Supplier<Identifier> iconSupplier) {
+    public VkModSettingsEntryBuilder setIconSupplier(Supplier<ResourceLocation> iconSupplier) {
         this.iconSupplier = iconSupplier;
         return this;
     }

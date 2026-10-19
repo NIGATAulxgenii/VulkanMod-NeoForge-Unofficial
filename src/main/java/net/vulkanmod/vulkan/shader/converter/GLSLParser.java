@@ -228,7 +228,9 @@ public class GLSLParser {
 
     private void parseStorageUniform() {
         var field = parseUniformField();
-        this.legacyUniforms.add(field);
+        if (!this.legacyUniforms.contains(field)) {
+            this.legacyUniforms.add(field);
+        }
     }
 
     private void parseSampler(Sampler.Type type) {
@@ -631,7 +633,7 @@ public class GLSLParser {
     }
 
     public UBO[] createUBOs() {
-        if (this.uniformBlockMap.isEmpty()) {
+        if (this.uniformBlockMap.isEmpty() && this.legacyUniforms.isEmpty()) {
             return new UBO[0];
         }
 

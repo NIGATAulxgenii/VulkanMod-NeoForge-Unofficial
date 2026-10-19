@@ -140,10 +140,6 @@ public class TerrainBufferBuilder implements VertexConsumer {
 		return this;
 	}
 
-    @Override
-    public VertexConsumer setLineWidth(float f) {
-        return this;
-    }
 
     @Override
 	public VertexConsumer setUv1(int i, int j) {

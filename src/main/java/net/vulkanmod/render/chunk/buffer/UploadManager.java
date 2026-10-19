@@ -1,6 +1,7 @@
 package net.vulkanmod.render.chunk.buffer;
 
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
+import java.nio.ByteBuffer;
 import net.vulkanmod.vulkan.Synchronization;
 import net.vulkanmod.vulkan.Vulkan;
 import net.vulkanmod.vulkan.device.DeviceManager;
@@ -10,109 +11,114 @@ import net.vulkanmod.vulkan.queue.CommandPool;
 import net.vulkanmod.vulkan.queue.Queue;
 import net.vulkanmod.vulkan.queue.TransferQueue;
 import org.lwjgl.system.MemoryStack;
+import org.lwjgl.vulkan.VK10;
 import org.lwjgl.vulkan.VkBufferMemoryBarrier;
 import org.lwjgl.vulkan.VkCommandBuffer;
 import org.lwjgl.vulkan.VkMemoryBarrier;
 
-import java.nio.ByteBuffer;
-
-import static org.lwjgl.vulkan.VK10.*;
-
 public class UploadManager {
-    public static UploadManager INSTANCE;
+   public static UploadManager INSTANCE;
+   Queue queue = DeviceManager.getTransferQueue();
+   CommandPool.CommandBuffer commandBuffer;
+   LongOpenHashSet dstBuffers = new LongOpenHashSet();
 
-    public static void createInstance() {
-        INSTANCE = new UploadManager();
-    }
+   public static void createInstance() {
+      INSTANCE = new UploadManager();
+   }
 
-    Queue queue = DeviceManager.getTransferQueue();
-    CommandPool.CommandBuffer commandBuffer;
+   public void submitUploads() {
+      if (this.commandBuffer != null) {
+         this.queue.submitCommands(this.commandBuffer);
+         Synchronization.INSTANCE.addCommandBuffer(this.commandBuffer);
+         this.commandBuffer = null;
+         this.dstBuffers.clear();
+      }
+   }
 
-    LongOpenHashSet dstBuffers = new LongOpenHashSet();
+   public void recordUpload(Buffer buffer, long dstOffset, long bufferSize, ByteBuffer src) {
+      StagingBuffer stagingBuffer = Vulkan.getStagingBuffer();
+      stagingBuffer.copyBuffer((int)bufferSize, src);
+      this.beginCommands();
+      VkCommandBuffer commandBuffer = this.commandBuffer.getHandle();
+      if (!this.dstBuffers.add(buffer.getId())) {
+         MemoryStack stack = MemoryStack.stackPush();
 
-    public void submitUploads() {
-        if (this.commandBuffer == null)
-            return;
-
-        this.queue.submitCommands(this.commandBuffer);
-
-        Synchronization.INSTANCE.addCommandBuffer(this.commandBuffer);
-
-        this.commandBuffer = null;
-        this.dstBuffers.clear();
-    }
-
-    public void recordUpload(Buffer buffer, long dstOffset, long bufferSize, ByteBuffer src) {
-        StagingBuffer stagingBuffer = Vulkan.getStagingBuffer();
-        stagingBuffer.copyBuffer((int) bufferSize, src);
-
-        beginCommands();
-        VkCommandBuffer commandBuffer = this.commandBuffer.getHandle();
-
-        if (!this.dstBuffers.add(buffer.getId())) {
-            try (MemoryStack stack = MemoryStack.stackPush()) {
-                VkMemoryBarrier.Buffer barrier = VkMemoryBarrier.calloc(1, stack);
-                barrier.sType$Default();
-                barrier.srcAccessMask(VK_ACCESS_TRANSFER_WRITE_BIT);
-                barrier.dstAccessMask(VK_ACCESS_TRANSFER_WRITE_BIT);
-
-                vkCmdPipelineBarrier(commandBuffer,
-                        VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                        0,
-                        barrier,
-                        null,
-                        null);
+         try {
+            org.lwjgl.vulkan.VkMemoryBarrier.Buffer barrier = VkMemoryBarrier.calloc(1, stack);
+            barrier.sType$Default();
+            barrier.srcAccessMask(4096);
+            barrier.dstAccessMask(4096);
+            VK10.vkCmdPipelineBarrier(commandBuffer, 4096, 4096, 0, barrier, null, null);
+         } catch (Throwable var13) {
+            if (stack != null) {
+               try {
+                  stack.close();
+               } catch (Throwable var12) {
+                  var13.addSuppressed(var12);
+               }
             }
 
-            this.dstBuffers.clear();
-        }
+            throw var13;
+         }
 
-        TransferQueue.uploadBufferCmd(commandBuffer, stagingBuffer.getId(), stagingBuffer.getOffset(), buffer.getId(), dstOffset, bufferSize);
-    }
+         if (stack != null) {
+            stack.close();
+         }
 
-    public void copyBuffer(Buffer src, Buffer dst) {
-        copyBuffer(src, 0, dst, 0, src.getBufferSize());
-    }
+         this.dstBuffers.clear();
+      }
 
-    public void copyBuffer(Buffer src, long srcOffset, Buffer dst, long dstOffset, long size) {
-        beginCommands();
+      TransferQueue.uploadBufferCmd(commandBuffer, stagingBuffer.getId(), stagingBuffer.getOffset(), buffer.getId(), dstOffset, bufferSize);
+   }
 
-        VkCommandBuffer commandBuffer = this.commandBuffer.getHandle();
+   public void copyBuffer(Buffer src, Buffer dst) {
+      this.copyBuffer(src, 0L, dst, 0L, src.getBufferSize());
+   }
 
-        try (MemoryStack stack = MemoryStack.stackPush()) {
-            VkMemoryBarrier.Buffer barrier = VkMemoryBarrier.calloc(1, stack);
-            barrier.sType$Default();
+   public void copyBuffer(Buffer src, long srcOffset, Buffer dst, long dstOffset, long size) {
+      this.beginCommands();
+      VkCommandBuffer commandBuffer = this.commandBuffer.getHandle();
+      MemoryStack stack = MemoryStack.stackPush();
 
-            VkBufferMemoryBarrier.Buffer bufferMemoryBarriers = VkBufferMemoryBarrier.calloc(1, stack);
-            VkBufferMemoryBarrier bufferMemoryBarrier = bufferMemoryBarriers.get(0);
-            bufferMemoryBarrier.sType$Default();
-            bufferMemoryBarrier.buffer(src.getId());
-            bufferMemoryBarrier.srcAccessMask(VK_ACCESS_TRANSFER_WRITE_BIT);
-            bufferMemoryBarrier.dstAccessMask(VK_ACCESS_TRANSFER_READ_BIT);
-            bufferMemoryBarrier.size(VK_WHOLE_SIZE);
+      try {
+         org.lwjgl.vulkan.VkMemoryBarrier.Buffer barrier = VkMemoryBarrier.calloc(1, stack);
+         barrier.sType$Default();
+         org.lwjgl.vulkan.VkBufferMemoryBarrier.Buffer bufferMemoryBarriers = VkBufferMemoryBarrier.calloc(1, stack);
+         VkBufferMemoryBarrier bufferMemoryBarrier = (VkBufferMemoryBarrier)bufferMemoryBarriers.get(0);
+         bufferMemoryBarrier.sType$Default();
+         bufferMemoryBarrier.buffer(src.getId());
+         bufferMemoryBarrier.srcAccessMask(4096);
+         bufferMemoryBarrier.dstAccessMask(2048);
+         bufferMemoryBarrier.size(-1L);
+         VK10.vkCmdPipelineBarrier(commandBuffer, 4096, 4096, 0, barrier, bufferMemoryBarriers, null);
+      } catch (Throwable var15) {
+         if (stack != null) {
+            try {
+               stack.close();
+            } catch (Throwable var14) {
+               var15.addSuppressed(var14);
+            }
+         }
 
-            vkCmdPipelineBarrier(commandBuffer,
-                    VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                    0,
-                    barrier,
-                    bufferMemoryBarriers,
-                    null);
-        }
+         throw var15;
+      }
 
-        this.dstBuffers.add(dst.getId());
+      if (stack != null) {
+         stack.close();
+      }
 
-        TransferQueue.uploadBufferCmd(commandBuffer, src.getId(), srcOffset, dst.getId(), dstOffset, size);
-    }
+      this.dstBuffers.add(dst.getId());
+      TransferQueue.uploadBufferCmd(commandBuffer, src.getId(), srcOffset, dst.getId(), dstOffset, size);
+   }
 
-    public void syncUploads() {
-        submitUploads();
+   public void syncUploads() {
+      this.submitUploads();
+      Synchronization.INSTANCE.waitFences();
+   }
 
-        Synchronization.INSTANCE.waitFences();
-    }
-
-    private void beginCommands() {
-        if (this.commandBuffer == null)
-            this.commandBuffer = queue.beginCommands();
-    }
-
+   private void beginCommands() {
+      if (this.commandBuffer == null) {
+         this.commandBuffer = this.queue.beginCommands();
+      }
+   }
 }

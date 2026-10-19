@@ -3,104 +3,106 @@ package net.vulkanmod.vulkan.shader.descriptor;
 import net.vulkanmod.vulkan.texture.VTextureSelector;
 import net.vulkanmod.vulkan.texture.VulkanImage;
 
-import static org.lwjgl.vulkan.VK10.*;
-
 public class ImageDescriptor implements Descriptor {
+   private final int descriptorType;
+   private final int binding;
+   public final String qualifier;
+   public final String name;
+   private int imageIdx;
+   public boolean useSampler;
+   public boolean isReadOnlyLayout;
+   private int layout;
+   private int mipLevel = -1;
 
-    private final int descriptorType;
-    private final int binding;
-    public final String qualifier;
-    public final String name;
-    public final int imageIdx;
+   public ImageDescriptor(int binding, String type, String name, int imageIdx, int descriptorType) {
+      this.binding = binding;
+      this.qualifier = type;
+      this.name = name;
+      this.imageIdx = imageIdx;
+      if (this.imageIdx == -1) {
+         throw new IllegalArgumentException();
+      } else {
+         this.descriptorType = descriptorType;
+         boolean isStorageImage = this.isStorageImage();
+         this.useSampler = !isStorageImage;
+         this.setLayout(isStorageImage ? 1 : 5);
+      }
+   }
 
-    public boolean useSampler;
-    public boolean isReadOnlyLayout;
-    private int layout;
-    private int mipLevel = -1;
+   @Override
+   public int getBinding() {
+      return this.binding;
+   }
 
-    public ImageDescriptor(int binding, String type, String name, int imageIdx, int descriptorType) {
-        this.binding = binding;
-        this.qualifier = type;
-        this.name = name;
-        this.imageIdx = imageIdx;
+   @Override
+   public int getType() {
+      return this.descriptorType;
+   }
 
-        if (this.imageIdx == -1) {
-            throw new IllegalArgumentException();
-        }
+   @Override
+   public int getStages() {
+      return 63;
+   }
 
-        this.descriptorType = descriptorType;
+   public int getImageIdx() {
+      return this.imageIdx;
+   }
 
-        boolean isStorageImage = isStorageImage();
-        this.useSampler = !isStorageImage;
-        setLayout(isStorageImage ? VK_IMAGE_LAYOUT_GENERAL : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-    }
+   public void setImageIdx(int imageIdx) {
+      this.imageIdx = imageIdx;
+   }
 
-    @Override
-    public int getBinding() {
-        return binding;
-    }
+   public void setLayout(int layout) {
+      this.layout = layout;
+      this.isReadOnlyLayout = layout == 5;
+   }
 
-    @Override
-    public int getType() {
-        return descriptorType;
-    }
+   public int getLayout() {
+      return this.layout;
+   }
 
-    @Override
-    public int getStages() {
-        return VK_SHADER_STAGE_ALL_GRAPHICS | VK_SHADER_STAGE_COMPUTE_BIT;
-    }
+   public void setMipLevel(int mipLevel) {
+      this.mipLevel = mipLevel;
+   }
 
-    public void setLayout(int layout) {
-        this.layout = layout;
-        this.isReadOnlyLayout = layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-    }
+   public int getMipLevel() {
+      return this.mipLevel;
+   }
 
-    public int getLayout() {
-        return layout;
-    }
+   public VulkanImage getImage() {
+      return VTextureSelector.getImage(this.imageIdx);
+   }
 
-    public void setMipLevel(int mipLevel) {
-        this.mipLevel = mipLevel;
-    }
+   public long getImageView(VulkanImage image) {
+      long view;
+      if (this.mipLevel == -1) {
+         view = image.getImageView();
+      } else {
+         view = image.getLevelImageView(this.mipLevel);
+      }
 
-    public int getMipLevel() {
-        return mipLevel;
-    }
+      return view;
+   }
 
-    public VulkanImage getImage() {
-        return VTextureSelector.getImage(this.imageIdx);
-    }
+   public boolean isStorageImage() {
+      return this.descriptorType == 3;
+   }
 
-    public long getImageView(VulkanImage image) {
-        long view;
+   public static class State {
+      long imageView;
+      long sampler;
 
-        if (mipLevel == -1)
-            view = image.getImageView();
-        else
-            view = image.getLevelImageView(mipLevel);
+      public State(long imageView, long sampler) {
+         this.set(imageView, sampler);
+      }
 
-        return view;
-    }
+      public void set(long imageView, long sampler) {
+         this.imageView = imageView;
+         this.sampler = sampler;
+      }
 
-    public boolean isStorageImage() {
-        return this.descriptorType == VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-    }
-
-    public static class State {
-        long imageView, sampler;
-
-        public State(long imageView, long sampler) {
-            set(imageView, sampler);
-        }
-
-        public void set(long imageView, long sampler) {
-            this.imageView = imageView;
-            this.sampler = sampler;
-        }
-
-        public boolean isCurrentState(long imageView, long sampler) {
-            return this.imageView == imageView && this.sampler == sampler;
-        }
-
-    }
+      public boolean isCurrentState(long imageView, long sampler) {
+         return this.imageView == imageView && this.sampler == sampler;
+      }
+   }
 }

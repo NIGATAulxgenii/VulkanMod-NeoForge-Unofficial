@@ -2,61 +2,76 @@ package net.vulkanmod.vulkan.shader.converter;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 public class UniformBlock implements GLSLParser.Node {
-    int binding;
-    String name;
-    String alias;
-    List<Field> fields = new ArrayList<>();
+   int binding;
+   String name;
+   String alias;
+   List<UniformBlock.Field> fields = new ArrayList<>();
 
-    public UniformBlock(String name) {
-        this.name = name;
-    }
+   public UniformBlock(String name) {
+      this.name = name;
+   }
 
-    public void addField(Field field) {
-        this.fields.add(field);
-    }
+   public void addField(UniformBlock.Field field) {
+      this.fields.add(field);
+   }
 
-    public void setBinding(int binding) {
-        this.binding = binding;
-    }
+   public void setBinding(int binding) {
+      this.binding = binding;
+   }
 
-    public void setAlias(String alias) {
-        this.alias = alias;
-    }
+   public void setAlias(String alias) {
+      this.alias = alias;
+   }
 
-    @Override
-    public String getStringValue() {
-        StringBuilder sb = new StringBuilder();
+   @Override
+   public String getStringValue() {
+      StringBuilder sb = new StringBuilder();
+      sb.append("layout(binding = %d) uniform %s {\n".formatted(this.binding, this.name));
+      int i = 0;
 
-        sb.append("layout(binding = %d) uniform %s {\n".formatted(binding, name));
+      for (int fieldsSize = this.fields.size(); i < fieldsSize; i++) {
+         UniformBlock.Field field = this.fields.get(i);
+         sb.append("\t%s %s;".formatted(field.type, field.name));
+         if (i < fieldsSize - 1) {
+            sb.append("\n");
+         }
+      }
 
-        for (int i = 0, fieldsSize = fields.size(); i < fieldsSize; i++) {
-            Field field = fields.get(i);
-            sb.append("\t%s %s;".formatted(field.type, field.name));
+      sb.append("\n}");
+      if (this.alias != null) {
+         sb.append(" %s ".formatted(this.alias));
+      }
 
-            if (i < fieldsSize - 1) {
-                sb.append("\n");
-            }
-        }
+      sb.append(";\n");
+      return sb.toString();
+   }
 
-        sb.append("\n}");
+   public static class Field {
+      final String type;
+      final String name;
 
-        if (this.alias != null) {
-            sb.append(" %s ".formatted(this.alias));
-        }
+      public Field(String type, String name) {
+         this.type = type;
+         this.name = name;
+      }
 
-        sb.append(";\n");
+      @Override
+      public boolean equals(Object o) {
+         if (o != null && this.getClass() == o.getClass()) {
+            UniformBlock.Field field = (UniformBlock.Field)o;
+            return Objects.equals(this.type, field.type) && Objects.equals(this.name, field.name);
+         } else {
+            return false;
+         }
+      }
 
-        return sb.toString();
-    }
-
-    public static class Field {
-        final String type, name;
-
-        public Field(String type, String name) {
-            this.type = type;
-            this.name = name;
-        }
-    }
+      @Override
+      public int hashCode() {
+         int result = Objects.hashCode(this.type);
+         return 31 * result + Objects.hashCode(this.name);
+      }
+   }
 }

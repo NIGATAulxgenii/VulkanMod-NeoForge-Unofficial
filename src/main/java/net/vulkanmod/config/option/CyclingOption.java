@@ -1,83 +1,86 @@
 package net.vulkanmod.config.option;
 
+import java.util.function.Consumer;
+import java.util.function.Supplier;
 import net.minecraft.network.chat.Component;
 import net.vulkanmod.config.gui.widget.CyclingOptionWidget;
 import net.vulkanmod.config.gui.widget.OptionWidget;
 import org.apache.commons.lang3.ArrayUtils;
 
-import java.util.function.Consumer;
-import java.util.function.Supplier;
-
 public class CyclingOption<E> extends Option<E> {
-    private E[] values;
-    private int index;
+   private E[] values;
+   private int index;
 
-    public CyclingOption(Component name, E[] values, Consumer<E> setter, Supplier<E> getter) {
-        super(name, setter, getter);
-        this.values = values;
+   public CyclingOption(Component name, E[] values, Consumer<E> setter, Supplier<E> getter) {
+      super(name, setter, getter);
+      this.values = values;
+      this.index = this.findNewValueIndex();
+   }
 
-        this.index = this.findNewValueIndex();
-    }
+   @Override
+   protected OptionWidget<?> createWidget() {
+      CyclingOptionWidget widget = new CyclingOptionWidget(this, this.name);
+      this.widget = widget;
+      return widget;
+   }
 
-    @Override
-    protected OptionWidget<?> createWidget() {
-        var widget = new CyclingOptionWidget(this, this.name);
-        this.widget = widget;
-        return widget;
-    }
+   public void updateOption(E[] values, Consumer<E> setter, Supplier<E> getter) {
+      this.onApply = setter;
+      this.valueSupplier = getter;
+      this.values = values;
+      this.index = ArrayUtils.indexOf(this.values, this.getNewValue());
+   }
 
-    @SuppressWarnings("unused")
-    public void updateOption(E[] values, Consumer<E> setter, Supplier<E> getter) {
-        this.onApply = setter;
-        this.valueSupplier = getter;
+   public int index() {
+      return this.index;
+   }
 
-        this.values = values;
-        this.index = ArrayUtils.indexOf(this.values, this.getNewValue());
-    }
+   public void setValues(E[] values) {
+      this.values = values;
+   }
 
-    public int index() {
-        return this.index;
-    }
+   public void prevValue() {
+      if (this.index > 0) {
+         this.index--;
+      }
 
-    public void setValues(E[] values) {
-        this.values = values;
-    }
+      this.updateValue();
+   }
 
-    public void prevValue() {
-        if(this.index > 0)
-            this.index--;
-        this.updateValue();
-    }
+   public void nextValue() {
+      if (this.index < this.values.length - 1) {
+         this.index++;
+      }
 
-    public void nextValue() {
-        if(this.index < values.length - 1)
-            this.index++;
-        this.updateValue();
-    }
+      this.updateValue();
+   }
 
-    private void updateValue() {
-        if(this.index >= 0 && this.index < this.values.length) {
-            this.newValue = values[this.index];
+   private void updateValue() {
+      if (this.index >= 0 && this.index < this.values.length) {
+         this.newValue = this.values[this.index];
+         if (this.onChange != null) {
+            this.onChange.run();
+         }
+      }
+   }
 
-            if (onChange != null)
-                onChange.run();
-        }
-    }
+   @Override
+   public void setNewValue(E e) {
+      super.setNewValue(e);
+      this.index = this.findNewValueIndex();
+   }
 
-    public void setNewValue(E e) {
-        super.setNewValue(e);
-        this.index = findNewValueIndex();
-    }
+   private int findNewValueIndex() {
+      for (int i = 0; i < this.values.length; i++) {
+         if (this.values[i].equals(this.newValue)) {
+            return i;
+         }
+      }
 
-    private int findNewValueIndex() {
-        for (int i = 0; i < this.values.length; i++) {
-            if (this.values[i].equals(this.newValue))
-                return i;
-        }
-        return -1;
-    }
+      return -1;
+   }
 
-    public E[] getValues() {
-        return values;
-    }
+   public E[] getValues() {
+      return this.values;
+   }
 }

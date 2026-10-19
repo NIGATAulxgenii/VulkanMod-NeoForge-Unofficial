@@ -1,15 +1,17 @@
 package net.vulkanmod.mixin.render;
 
 import com.llamalad7.mixinextras.sugar.Local;
-import net.minecraft.client.GraphicsPreset;
+import com.mojang.blaze3d.systems.TimerQuery;
+import java.util.Optional;
+import net.minecraft.client.GraphicsStatus;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.OptionInstance;
 import net.minecraft.client.Options;
 import net.minecraft.client.main.GameConfig;
 import net.vulkanmod.Initializer;
 import net.vulkanmod.render.texture.SpriteUpdateUtil;
 import net.vulkanmod.vulkan.Renderer;
 import net.vulkanmod.vulkan.Vulkan;
-import org.objectweb.asm.Opcodes;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -20,50 +22,56 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(Minecraft.class)
 public class MinecraftMixin {
+   @Redirect(method = "<init>", at = @At(value = "INVOKE", target = "Lnet/neoforged/fml/loading/ImmediateWindowHandler;loadingOverlay(Ljava/util/function/Supplier;Ljava/util/function/Supplier;Ljava/util/function/Consumer;Z)Ljava/util/function/Supplier;"), remap = false)
+   private java.util.function.Supplier<net.minecraft.client.gui.screens.LoadingOverlay> vulkanLoadingOverlay(
+      java.util.function.Supplier<Minecraft> mc,
+      java.util.function.Supplier<net.minecraft.server.packs.resources.ReloadInstance> reload,
+      java.util.function.Consumer<java.util.Optional<Throwable>> onFinish, boolean fade) {
+      net.neoforged.fml.loading.ImmediateWindowHandler.loadingOverlay(mc, reload, onFinish, fade);
+      return () -> new net.minecraft.client.gui.screens.LoadingOverlay(mc.get(), reload.get(), onFinish, fade);
+   }
 
-    @Shadow public boolean noRender;
-    @Shadow @Final public Options options;
+   @Shadow
+   @Final
+   public Options options;
 
-    @Inject(method = "<init>", at = @At(value = "RETURN"))
-    private void forceGraphicsMode(GameConfig gameConfig, CallbackInfo ci) {
-        var graphicsModeOption = this.options.graphicsPreset();
+   @Inject(method = "<init>", at = @At("RETURN"))
+   private void forceGraphicsMode(GameConfig gameConfig, CallbackInfo ci) {
+      OptionInstance<GraphicsStatus> graphicsModeOption = this.options.graphicsMode();
+      if (graphicsModeOption.get() == GraphicsStatus.FABULOUS) {
+         Initializer.LOGGER.error("Fabulous graphics mode not supported, forcing Fancy");
+         graphicsModeOption.set(GraphicsStatus.FANCY);
+      }
+   }
 
-        if (graphicsModeOption.get() == GraphicsPreset.FABULOUS) {
-            Initializer.LOGGER.error("Fabulous graphics mode not supported, forcing Fancy.");
-            graphicsModeOption.set(GraphicsPreset.FANCY);
-        }
+   @Redirect(method = "runTick", at = @At(value = "INVOKE", target = "Lcom/mojang/blaze3d/systems/TimerQuery;getInstance()Ljava/util/Optional;"))
+   private Optional<TimerQuery> removeTimer() {
+      return Optional.empty();
+   }
 
-        if (this.options.improvedTransparency().get()) {
-            Initializer.LOGGER.error("Improved transparency currently not supported, forcing it off.");
-            this.options.improvedTransparency().set(false);
-        }
-    }
+   @Inject(method = "runTick", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/Minecraft;tick()V"))
+   private void redirectResourceTick(boolean bl, CallbackInfo ci, @Local(ordinal = 0) int i, @Local(ordinal = 1) int j) {
+      int n = Math.min(10, i) - 1;
+      boolean doUpload = j == n;
+      SpriteUpdateUtil.setDoUpload(doUpload);
+   }
 
-    @Inject(method = "runTick", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/Minecraft;tick()V"))
-    private void redirectResourceTick(boolean bl, CallbackInfo ci, @Local(ordinal = 0) int i, @Local(ordinal = 1) int j) {
-        int n = Math.min(10, i) - 1;
-        boolean doUpload = j == n;
-        SpriteUpdateUtil.setDoUpload(doUpload);
-    }
+   @Inject(method = "close", at = @At("HEAD"))
+   public void close(CallbackInfo ci) {
+      Vulkan.waitIdle();
+   }
 
-    @Inject(method = "close", at = @At(value = "HEAD"))
-    public void close(CallbackInfo ci) {
-        Vulkan.waitIdle();
-    }
+   @Inject(method = "close", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/VirtualScreen;close()V"))
+   public void close2(CallbackInfo ci) {
+      Vulkan.cleanUp();
+   }
 
+   @Inject(method = "resizeDisplay", at = @At("HEAD"))
+   public void onResolutionChanged(CallbackInfo ci) {
+      Renderer.scheduleSwapChainUpdate();
+   }
 
-    @Inject(method = "close", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/VirtualScreen;close()V"))
-    public void close2(CallbackInfo ci) {
-        Vulkan.cleanUp();
-    }
-
-    @Inject(method = "resizeDisplay", at = @At("HEAD"))
-    public void onResolutionChanged(CallbackInfo ci) {
-        Renderer.scheduleSwapChainUpdate();
-    }
-
-    // Fixes crash when minimizing window before setScreen is called
-    @Redirect(method = "setScreen", at = @At(value = "FIELD", target = "Lnet/minecraft/client/Minecraft;noRender:Z", opcode = Opcodes.PUTFIELD))
-    private void keepVar(Minecraft instance, boolean value) {}
-
+   @Redirect(method = "setScreen", at = @At(value = "FIELD", target = "Lnet/minecraft/client/Minecraft;noRender:Z", opcode = 181))
+   private void keepVar(Minecraft instance, boolean value) {
+   }
 }

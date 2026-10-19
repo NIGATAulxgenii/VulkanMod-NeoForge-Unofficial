@@ -2,72 +2,106 @@ package net.vulkanmod.vulkan.queue;
 
 import net.vulkanmod.vulkan.Synchronization;
 import net.vulkanmod.vulkan.Vulkan;
-import net.vulkanmod.vulkan.util.VUtil;
 import org.lwjgl.system.MemoryStack;
+import org.lwjgl.vulkan.VK10;
 import org.lwjgl.vulkan.VkBufferCopy;
 import org.lwjgl.vulkan.VkCommandBuffer;
 import org.lwjgl.vulkan.VkDevice;
-
-import static org.lwjgl.system.MemoryStack.stackPush;
-import static org.lwjgl.vulkan.VK10.vkCmdCopyBuffer;
-import static org.lwjgl.vulkan.VK10.vkWaitForFences;
+import org.lwjgl.vulkan.VkBufferCopy.Buffer;
 
 public class TransferQueue extends Queue {
-    private static final VkDevice DEVICE = Vulkan.getVkDevice();
+   private static final VkDevice DEVICE = Vulkan.getVkDevice();
 
-    public TransferQueue(MemoryStack stack, int familyIndex) {
-        super(stack, familyIndex);
-    }
+   public TransferQueue(MemoryStack stack, int familyIndex) {
+      super(stack, familyIndex);
+   }
 
-    public long copyBufferCmd(long srcBuffer, long srcOffset, long dstBuffer, long dstOffset, long size) {
+   public long copyBufferCmd(long srcBuffer, long srcOffset, long dstBuffer, long dstOffset, long size) {
+      MemoryStack stack = MemoryStack.stackPush();
 
-        try (MemoryStack stack = stackPush()) {
+      long var14;
+      try {
+         CommandPool.CommandBuffer commandBuffer = this.beginCommands();
+         Buffer copyRegion = VkBufferCopy.calloc(1, stack);
+         copyRegion.size(size);
+         copyRegion.srcOffset(srcOffset);
+         copyRegion.dstOffset(dstOffset);
+         VK10.vkCmdCopyBuffer(commandBuffer.getHandle(), srcBuffer, dstBuffer, copyRegion);
+         this.submitCommands(commandBuffer);
+         Synchronization.INSTANCE.addCommandBuffer(commandBuffer);
+         var14 = commandBuffer.fence;
+      } catch (Throwable var17) {
+         if (stack != null) {
+            try {
+               stack.close();
+            } catch (Throwable var16) {
+               var17.addSuppressed(var16);
+            }
+         }
 
-            CommandPool.CommandBuffer commandBuffer = beginCommands();
+         throw var17;
+      }
 
-            VkBufferCopy.Buffer copyRegion = VkBufferCopy.calloc(1, stack);
-            copyRegion.size(size);
-            copyRegion.srcOffset(srcOffset);
-            copyRegion.dstOffset(dstOffset);
+      if (stack != null) {
+         stack.close();
+      }
 
-            vkCmdCopyBuffer(commandBuffer.getHandle(), srcBuffer, dstBuffer, copyRegion);
+      return var14;
+   }
 
-            this.submitCommands(commandBuffer);
-            Synchronization.INSTANCE.addCommandBuffer(commandBuffer);
+   public void uploadBufferImmediate(long srcBuffer, long srcOffset, long dstBuffer, long dstOffset, long size) {
+      MemoryStack stack = MemoryStack.stackPush();
 
-            return commandBuffer.fence;
-        }
-    }
+      try {
+         CommandPool.CommandBuffer commandBuffer = this.beginCommands();
+         Buffer copyRegion = VkBufferCopy.calloc(1, stack);
+         copyRegion.size(size);
+         copyRegion.srcOffset(srcOffset);
+         copyRegion.dstOffset(dstOffset);
+         VK10.vkCmdCopyBuffer(commandBuffer.getHandle(), srcBuffer, dstBuffer, copyRegion);
+         this.submitCommands(commandBuffer);
+         VK10.vkWaitForFences(DEVICE, commandBuffer.fence, true, -1L);
+         commandBuffer.reset();
+      } catch (Throwable var15) {
+         if (stack != null) {
+            try {
+               stack.close();
+            } catch (Throwable var14) {
+               var15.addSuppressed(var14);
+            }
+         }
 
-    public void uploadBufferImmediate(long srcBuffer, long srcOffset, long dstBuffer, long dstOffset, long size) {
+         throw var15;
+      }
 
-        try (MemoryStack stack = stackPush()) {
-            CommandPool.CommandBuffer commandBuffer = this.beginCommands();
+      if (stack != null) {
+         stack.close();
+      }
+   }
 
-            VkBufferCopy.Buffer copyRegion = VkBufferCopy.calloc(1, stack);
-            copyRegion.size(size);
-            copyRegion.srcOffset(srcOffset);
-            copyRegion.dstOffset(dstOffset);
+   public static void uploadBufferCmd(VkCommandBuffer commandBuffer, long srcBuffer, long srcOffset, long dstBuffer, long dstOffset, long size) {
+      MemoryStack stack = MemoryStack.stackPush();
 
-            vkCmdCopyBuffer(commandBuffer.getHandle(), srcBuffer, dstBuffer, copyRegion);
+      try {
+         Buffer copyRegion = VkBufferCopy.calloc(1, stack);
+         copyRegion.size(size);
+         copyRegion.srcOffset(srcOffset);
+         copyRegion.dstOffset(dstOffset);
+         VK10.vkCmdCopyBuffer(commandBuffer, srcBuffer, dstBuffer, copyRegion);
+      } catch (Throwable var15) {
+         if (stack != null) {
+            try {
+               stack.close();
+            } catch (Throwable var14) {
+               var15.addSuppressed(var14);
+            }
+         }
 
-            this.submitCommands(commandBuffer);
-            vkWaitForFences(DEVICE, commandBuffer.fence, true, VUtil.UINT64_MAX);
-            commandBuffer.reset();
-        }
-    }
+         throw var15;
+      }
 
-    public static void uploadBufferCmd(VkCommandBuffer commandBuffer, long srcBuffer, long srcOffset, long dstBuffer, long dstOffset, long size) {
-
-        try (MemoryStack stack = stackPush()) {
-
-            VkBufferCopy.Buffer copyRegion = VkBufferCopy.calloc(1, stack);
-            copyRegion.size(size);
-            copyRegion.srcOffset(srcOffset);
-            copyRegion.dstOffset(dstOffset);
-
-            vkCmdCopyBuffer(commandBuffer, srcBuffer, dstBuffer, copyRegion);
-        }
-    }
-
+      if (stack != null) {
+         stack.close();
+      }
+   }
 }
