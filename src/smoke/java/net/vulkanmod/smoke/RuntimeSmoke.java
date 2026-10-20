@@ -122,7 +122,7 @@ public final class RuntimeSmoke {
 
     private static void inspectTerrain(Minecraft mc) {
         var section = WorldRenderer.getInstance().getSectionGrid().getSectionAtBlockPos(new BlockPos(8, 193, 8));
-        var buffers = section.getChunkArea().drawBuffers;
+        var buffers = section.getChunkArea().getDrawBuffers();
         for (var type : net.vulkanmod.render.vertex.TerrainRenderType.VALUES) {
             var counts = new int[net.vulkanmod.render.chunk.cull.QuadFacing.COUNT];
             for (int facing = 0; facing < counts.length; facing++) {

@@ -10,9 +10,6 @@ import net.vulkanmod.render.model.quad.ModelQuadView;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
-import org.spongepowered.asm.mixin.injection.At;
-import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(BakedQuad.class)
 public class BakedQuadM implements ModelQuadView {
@@ -27,18 +24,11 @@ public class BakedQuadM implements ModelQuadView {
    protected int tintIndex;
    private int flags;
    private int normal;
-   private QuadFacing facing;
-
-   @Inject(method = "<init>", at = @At("RETURN"))
-   private void onInit(CallbackInfo ci) {
-      this.flags = ModelQuadFlags.getQuadFlags(this, this.direction);
-      int packedNormal = ModelQuadNormals.computePackedNormal(this);
-      this.normal = packedNormal;
-      this.facing = QuadFacing.fromNormal(packedNormal);
-   }
+   private volatile QuadFacing facing;
 
    @Override
    public int getFlags() {
+      this.ensureInitialized();
       return this.flags;
    }
 
@@ -89,12 +79,23 @@ public class BakedQuadM implements ModelQuadView {
 
    @Override
    public QuadFacing getQuadFacing() {
+      this.ensureInitialized();
       return this.facing;
    }
 
    @Override
    public int getNormal() {
+      this.ensureInitialized();
       return this.normal;
+   }
+
+   // Computed on first use: quads baked after a resource reload were seen without constructor init.
+   private void ensureInitialized() {
+      if (this.facing == null) {
+         this.flags = ModelQuadFlags.getQuadFlags(this, this.direction);
+         this.normal = ModelQuadNormals.computePackedNormal(this);
+         this.facing = QuadFacing.fromNormal(this.normal);
+      }
    }
 
    @Override
